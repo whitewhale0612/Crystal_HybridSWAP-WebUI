@@ -1,0 +1,22 @@
+# Local workspace notes
+.local/
+*.local
+*.local.*
+
+# Build artifacts
+backend/backend
+module/bin/chswapctl
+dist/
+
+# Runtime state and diagnostics
+module/data/
+module/logs/
+module/state/
+module/diagnostics/
+*.log
+
+# Local editor and OS files
+.DS_Store
+*~
+*.swp
+*.swo

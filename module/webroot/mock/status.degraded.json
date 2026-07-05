@@ -1,0 +1,113 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "mode": "full-control",
+    "frontend_gate": {
+      "allowed": false,
+      "reason_code": "E_KERNEL_NODE_MISSING",
+      "message": "kernel does not expose the required Crystal Hybridswap management nodes"
+    },
+    "degraded": true,
+    "degraded_reasons": [
+      "kernel does not expose the required Crystal Hybridswap management nodes",
+      "zram swap priority does not match the profile",
+      "block backing is not bound to /dev/block/by-name/hybridswap"
+    ],
+    "zram": {
+      "device": "zram0",
+      "found": true,
+      "initstate": 1,
+      "active_swap": true,
+      "disksize_bytes": 8589934592,
+      "mem_limit_bytes": 0,
+      "comp_algorithm": "lzo",
+      "backing_dev": "none",
+      "backing_bound_via": "none"
+    },
+    "swap": {
+      "enabled": true,
+      "active": true,
+      "priority": -1,
+      "device": "/dev/block/zram0",
+      "size_bytes": 8589934592,
+      "used_bytes": 2147483648
+    },
+    "crystal": {
+      "enable": 1,
+      "core_enable": 1,
+      "swapd_pause": 0,
+      "loglevel": 1,
+      "dev_life": 1,
+      "quota_day": 10737418240,
+      "quota_used": 0,
+      "quota_remaining": 10737418240,
+      "zram_increase": 75
+    },
+    "zms": {
+      "enabled": 0,
+      "present": false,
+      "nr_blocks": 0,
+      "used_blocks": 0,
+      "objects": 0,
+      "original_bytes": 0,
+      "stored_bytes": 0,
+      "packed_bytes": 0,
+      "slot_overhead_bytes": 0,
+      "slot_overhead_pct": 0,
+      "block_bytes": 0,
+      "block_waste_bytes": 0,
+      "block_utilization_pct": 0,
+      "backing_savings_bytes": 0,
+      "backing_savings_pct": 0,
+      "space_delta_bytes": 0,
+      "space_saved_pct": 0,
+      "packing_efficiency_pct": 0
+    },
+    "policy": {
+      "zram_wm_ratio": 75,
+      "avail_buffers": {
+        "avail_mb": 0,
+        "min_mb": 512,
+        "high_mb": 1024,
+        "free_swap_threshold_mb": 512
+      },
+      "erm_avail_buffer_enable": 1,
+      "erm_avail_buffer": {
+        "min_mb": 512,
+        "high_mb": 1024
+      }
+    },
+    "boot": {
+      "phase": "post-fs-data",
+      "result": "degraded",
+      "started_at_ms": 1783144800000,
+      "finished_at_ms": 1783144803100,
+      "duration_ms": 3100,
+      "degraded_reasons": [
+        "swapoff failed",
+        "zram reset failed"
+      ],
+      "log_tail": [
+        "post-fs-data: full-control apply finished"
+      ]
+    },
+    "storage": {
+      "profile_backend": "module-data-file",
+      "profile_path": "/data/adb/modules/crystal_hybridswap_webui/data/profile.json",
+      "data_dir": "/data/adb/modules/crystal_hybridswap_webui/data"
+    }
+  },
+  "warnings": [
+    {
+      "code": "W_KERNEL_NODE_MISSING",
+      "message": "kernel does not expose the required Crystal Hybridswap management nodes",
+      "details": {
+        "missing_nodes": [
+          "/sys/block/zram0/hybridswap_report",
+          "/sys/block/zram0/hybridswap_loop_device"
+        ]
+      }
+    }
+  ]
+}

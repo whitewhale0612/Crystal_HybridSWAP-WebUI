@@ -1,0 +1,94 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "mode": "full-control",
+    "frontend_gate": {
+      "allowed": true
+    },
+    "degraded": false,
+    "degraded_reasons": [],
+    "zram": {
+      "device": "zram0",
+      "found": true,
+      "initstate": 1,
+      "active_swap": true,
+      "disksize_bytes": 12884901888,
+      "mem_limit_bytes": 0,
+      "comp_algorithm": "lz4",
+      "backing_dev": "/dev/block/by-name/hybridswap",
+      "backing_bound_via": "hybridswap_loop_device"
+    },
+    "swap": {
+      "enabled": true,
+      "active": true,
+      "priority": 32767,
+      "device": "/dev/block/zram0",
+      "size_bytes": 12884901888,
+      "used_bytes": 520093696
+    },
+    "crystal": {
+      "enable": 1,
+      "core_enable": 1,
+      "swapd_pause": 0,
+      "loglevel": 1,
+      "dev_life": 1,
+      "quota_day": 10737418240,
+      "quota_used": 2147483648,
+      "quota_remaining": 8589934592,
+      "zram_increase": 75
+    },
+    "zms": {
+      "enabled": 1,
+      "present": true,
+      "ret": 0,
+      "nr_blocks": 262144,
+      "used_blocks": 42359,
+      "objects": 126976,
+      "original_bytes": 520093696,
+      "stored_bytes": 145540224,
+      "packed_bytes": 146486320,
+      "slot_overhead_bytes": 946096,
+      "slot_overhead_pct": 0.65,
+      "block_bytes": 173502464,
+      "block_waste_bytes": 27016144,
+      "block_utilization_pct": 84.43,
+      "backing_savings_bytes": 346591232,
+      "backing_savings_pct": 66.64,
+      "space_delta_bytes": -946096,
+      "space_saved_pct": -0.65,
+      "packing_efficiency_pct": 84.43
+    },
+    "policy": {
+      "zram_wm_ratio": 75,
+      "avail_buffers": {
+        "avail_mb": 0,
+        "min_mb": 512,
+        "high_mb": 1024,
+        "free_swap_threshold_mb": 512
+      },
+      "erm_avail_buffer_enable": 1,
+      "erm_avail_buffer": {
+        "min_mb": 512,
+        "high_mb": 1024
+      }
+    },
+    "boot": {
+      "phase": "boot-completed",
+      "result": "active",
+      "started_at_ms": 1783144800000,
+      "finished_at_ms": 1783144804210,
+      "duration_ms": 4210,
+      "degraded_reasons": [],
+      "log_tail": [
+        "boot-completed: reconcile apply finished"
+      ]
+    },
+    "storage": {
+      "profile_backend": "ksud-module-config",
+      "profile_path": "profile.json",
+      "data_dir": "/data/adb/modules/crystal_hybridswap_webui/data"
+    }
+  },
+  "warnings": []
+}

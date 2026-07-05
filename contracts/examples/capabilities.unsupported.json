@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "backend_version": "Unknown",
+    "api_version": "1",
+    "frontend_gate": {
+      "allowed": false,
+      "reason_code": "E_KERNEL_NODE_MISSING",
+      "message": "kernel does not expose the required Crystal Hybridswap management nodes"
+    },
+    "kernel": {
+      "crystal_present": true,
+      "zram_control_present": true,
+      "required_nodes_missing": [
+        "/sys/block/zram0/hybridswap_report",
+        "/sys/block/zram0/hybridswap_loop_device"
+      ],
+      "crystal_report": {
+        "data_path": "private_zram_writeback_and_batchin"
+      }
+    },
+    "zram": {
+      "comp_algorithms": ["lzo", "lz4"],
+      "comp_algorithm_active": "lzo",
+      "mem_total_bytes": 8589934592
+    },
+    "profile_storage": {
+      "backend": "ksud-module-config",
+      "path": "profile.json"
+    }
+  },
+  "warnings": [
+    {
+      "code": "W_KERNEL_NODE_MISSING",
+      "message": "kernel does not expose the required Crystal Hybridswap management nodes",
+      "details": {
+        "missing_nodes": [
+          "/sys/block/zram0/hybridswap_report",
+          "/sys/block/zram0/hybridswap_loop_device"
+        ]
+      }
+    }
+  ]
+}

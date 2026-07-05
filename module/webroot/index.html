@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="color-scheme" content="dark light" />
+    <title>Crystal Hybridswap</title>
+    <!-- KernelSU/SukiSU serves device safe-area insets as CSS vars here.
+         Harmless 404 (ignored) in a plain browser / mock mode. -->
+    <link rel="stylesheet" href="internal/insets.css" />
+    <link rel="stylesheet" href="css/tokens.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <style>
+      /* first-paint shield: avoid flash of unstyled content before the app mounts */
+      #app-loading {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        gap: 14px;
+      }
+      #app-loading .spark {
+        width: 46px;
+        height: 46px;
+        border-radius: 12px;
+        background: var(--grad-accent);
+        box-shadow: 0 8px 26px -8px var(--accent);
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.55;
+          transform: scale(0.94);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- global SVG defs: gradient used by ring/gauge strokes -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#22d3ee" />
+          <stop offset="55%" stop-color="#38bdf8" />
+          <stop offset="100%" stop-color="#a5f3fc" />
+        </linearGradient>
+        <linearGradient id="ringWarn" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f59e0b" />
+          <stop offset="100%" stop-color="#fcd34d" />
+        </linearGradient>
+        <linearGradient id="ringDanger" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ef4444" />
+          <stop offset="100%" stop-color="#fca5a5" />
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <div id="root">
+      <div id="app-loading"><div class="spark"></div></div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

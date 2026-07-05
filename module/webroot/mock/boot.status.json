@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "phase": "boot-completed",
+    "result": "active",
+    "started_at_ms": 1783144800000,
+    "finished_at_ms": 1783144804210,
+    "duration_ms": 4210,
+    "degraded_reasons": [],
+    "log_tail": [
+      "boot-completed: reconcile apply finished"
+    ]
+  },
+  "warnings": []
+}

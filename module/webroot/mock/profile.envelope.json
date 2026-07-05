@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "schema": "chswap.profile.v1",
+    "mode": "full-control",
+    "boot": {
+      "post_fs_timeout_ms": 8000
+    },
+    "zram": {
+      "device": "zram0",
+      "disksize": null,
+      "comp_algorithm": null
+    },
+    "backing": {
+      "mode": "block"
+    },
+    "swap": {
+      "enabled": true,
+      "priority": 32767
+    },
+    "crystal": {
+      "enable": null,
+      "core_enable": null,
+      "swapd_pause": null,
+      "loglevel": null,
+      "dev_life": null,
+      "quota_day": null,
+      "zram_increase": null
+    },
+    "policy": {
+      "zram_wm_ratio": null,
+      "avail_buffers": null,
+      "erm_avail_buffer_enable": null
+    }
+  },
+  "warnings": []
+}

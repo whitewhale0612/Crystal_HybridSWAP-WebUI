@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "changed": true,
+    "degraded": false,
+    "degraded_reasons": [],
+    "steps": [
+      {
+        "name": "crystal.quota_day",
+        "status": "changed",
+        "target": "/sys/block/zram0/hybridswap_quota_day",
+        "old_value": "5368709120",
+        "new_value": "10737418240"
+      },
+      {
+        "name": "policy.zram_wm_ratio",
+        "status": "unchanged",
+        "target": "/dev/memcg/memory.zram_wm_ratio",
+        "old_value": "75",
+        "new_value": "75"
+      }
+    ]
+  },
+  "warnings": []
+}

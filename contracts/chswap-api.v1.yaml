@@ -1,0 +1,843 @@
+openapi: 3.1.0
+info:
+  title: Crystal Hybridswap Local API
+  version: 1.0.0
+  license:
+    name: GPL-2.0-only
+    identifier: GPL-2.0-only
+  description: |
+    Contract for the command-backed local API exposed by chswapctl.
+
+    The profile schema is three-state: nullable fields mean "follow system".
+    Full-control ownership is maintained by a polling daemon. Manual zram
+    maintenance endpoints are not part of the public WebUI contract.
+
+    This is not a network service by default. WebUI calls the backend through
+    KernelSU exec:
+
+      chswapctl api GET /v1/status
+      chswapctl api PUT /v1/profile --json '<json>'
+
+    The OpenAPI shape is used as a precise frontend/backend contract.
+servers:
+  - url: chswapctl://local
+security: []
+paths:
+  /v1/capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Return supported backend and kernel management capabilities.
+      responses:
+        "200":
+          description: Capability envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilityEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+  /v1/status:
+    get:
+      operationId: getStatus
+      summary: Return a live status snapshot.
+      responses:
+        "200":
+          description: Status envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+  /v1/profile:
+    get:
+      operationId: getProfile
+      summary: Return the persisted profile.
+      responses:
+        "200":
+          description: Profile envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+    put:
+      operationId: putProfile
+      summary: Validate and save a profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Profile"
+      responses:
+        "200":
+          description: Saved profile envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+  /v1/profile/validate:
+    post:
+      operationId: validateProfile
+      summary: Validate a profile without saving it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Profile"
+      responses:
+        "200":
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+  /v1/apply:
+    post:
+      operationId: applyProfile
+      summary: Apply profile settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyRequest"
+      responses:
+        "200":
+          description: Apply result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+  /v1/boot/apply:
+    post:
+      operationId: applyBootPhase
+      summary: Apply settings from a boot phase.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BootApplyRequest"
+      responses:
+        "200":
+          description: Boot apply result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+  /v1/boot/status:
+    get:
+      operationId: getBootStatus
+      summary: Return the last recorded boot apply result.
+      responses:
+        "200":
+          description: Boot status envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootStatusEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+  /v1/diagnostics/export:
+    post:
+      operationId: exportDiagnostics
+      summary: Create a diagnostics bundle.
+      responses:
+        "200":
+          description: Diagnostics export path.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiagnosticsEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
+components:
+  responses:
+    Failure:
+      description: API failure envelope.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/FailureEnvelope"
+  schemas:
+    EnvelopeBase:
+      type: object
+      required: [ok, schema, warnings]
+      properties:
+        ok:
+          type: boolean
+        schema:
+          type: string
+          const: chswap.api.v1
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Warning"
+    Warning:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - E_INVALID_JSON
+            - E_INVALID_PROFILE
+            - E_UNSUPPORTED_FIELD
+            - E_DEVICE_NOT_FOUND
+            - E_BACKING_DEVICE_MISSING
+            - E_SWAPOFF_FAILED
+            - E_MKSWAP_FAILED
+            - E_SWAPON_FAILED
+            - E_KERNEL_NODE_MISSING
+            - E_KERNEL_WRITE_FAILED
+            - E_APPLY_LOCKED
+            - E_BOOT_TIMEOUT
+            - E_INTERNAL
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    FailureEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          required: [error]
+          properties:
+            ok:
+              const: false
+            error:
+              $ref: "#/components/schemas/Error"
+    CapabilityEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Capabilities"
+    Capabilities:
+      type: object
+      required:
+        - backend_version
+        - api_version
+        - frontend_gate
+        - kernel
+        - zram
+        - profile_storage
+      properties:
+        backend_version:
+          type: string
+        api_version:
+          type: string
+          const: "1"
+        frontend_gate:
+          $ref: "#/components/schemas/FrontendGate"
+        kernel:
+          type: object
+          required: [crystal_present, zram_control_present]
+          properties:
+            crystal_present:
+              type: boolean
+            zram_control_present:
+              type: boolean
+            required_nodes_missing:
+              type: array
+              items:
+                type: string
+            crystal_report:
+              type: object
+              additionalProperties: true
+        zram:
+          $ref: "#/components/schemas/ZramCapabilities"
+        profile_storage:
+          type: object
+          required: [backend]
+          properties:
+            backend:
+              type: string
+              enum: [ksud-module-config, module-data-file]
+            path:
+              type: string
+    ZramCapabilities:
+      type: object
+      required: [comp_algorithms, mem_total_bytes]
+      properties:
+        comp_algorithms:
+          type: array
+          items:
+            type: string
+        comp_algorithm_active:
+          type: string
+        mem_total_bytes:
+          type: integer
+          minimum: 0
+    StatusEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Status"
+    Status:
+      type: object
+      required:
+        - mode
+        - frontend_gate
+        - degraded
+        - degraded_reasons
+        - zram
+        - swap
+        - crystal
+        - zms
+        - policy
+        - boot
+        - storage
+      properties:
+        mode:
+          type: string
+          enum: [diagnostic, full-control]
+        frontend_gate:
+          $ref: "#/components/schemas/FrontendGate"
+        degraded:
+          type: boolean
+        degraded_reasons:
+          type: array
+          items:
+            type: string
+        zram:
+          $ref: "#/components/schemas/ZramStatus"
+        swap:
+          $ref: "#/components/schemas/SwapStatus"
+        crystal:
+          $ref: "#/components/schemas/CrystalStatus"
+        zms:
+          $ref: "#/components/schemas/ZmsStatus"
+        policy:
+          $ref: "#/components/schemas/PolicyStatus"
+        boot:
+          $ref: "#/components/schemas/BootStatus"
+        storage:
+          $ref: "#/components/schemas/StorageStatus"
+    FrontendGate:
+      type: object
+      required: [allowed]
+      properties:
+        allowed:
+          type: boolean
+        reason_code:
+          type: string
+          enum:
+            - E_KERNEL_NODE_MISSING
+        message:
+          type: string
+    ZramStatus:
+      type: object
+      required: [device, found, initstate, active_swap]
+      properties:
+        device:
+          type: string
+          pattern: "^zram[0-9]+$"
+        found:
+          type: boolean
+        initstate:
+          type: integer
+        active_swap:
+          type: boolean
+        disksize_bytes:
+          type: integer
+          minimum: 0
+        mem_limit_bytes:
+          type: integer
+          minimum: 0
+        comp_algorithm:
+          type: string
+        recomp_algorithm:
+          type: string
+        backing_dev:
+          type: string
+        backing_bound_via:
+          type: string
+          enum: [none, backing_dev, hybridswap_loop_device]
+        mm_stat:
+          type: object
+          additionalProperties: true
+    SwapStatus:
+      type: object
+      required: [enabled, active, priority, size_bytes, used_bytes]
+      properties:
+        enabled:
+          type: boolean
+        active:
+          type: boolean
+        priority:
+          type: integer
+        device:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 0
+        used_bytes:
+          type: integer
+          minimum: 0
+    CrystalStatus:
+      type: object
+      required:
+        - enable
+        - core_enable
+        - swapd_pause
+        - loglevel
+        - dev_life
+        - quota_day
+        - quota_used
+        - quota_remaining
+        - zram_increase
+      properties:
+        enable:
+          type: integer
+          enum: [0, 1]
+        core_enable:
+          type: integer
+          enum: [0, 1]
+        swapd_pause:
+          type: integer
+          enum: [0, 1]
+        loglevel:
+          type: integer
+        dev_life:
+          type: integer
+          minimum: 0
+          description: Live device-life level reported by the kernel.
+        quota_day:
+          type: integer
+          minimum: 0
+        quota_used:
+          type: integer
+          minimum: 0
+        quota_remaining:
+          type: integer
+          minimum: 0
+        zram_increase:
+          type: integer
+          minimum: 0
+          description: ZRAM pressure increase in MiB-sized units.
+    ZmsStatus:
+      type: object
+      required:
+        - enabled
+        - present
+        - nr_blocks
+        - used_blocks
+        - objects
+        - original_bytes
+        - stored_bytes
+        - packed_bytes
+        - slot_overhead_bytes
+        - slot_overhead_pct
+        - block_bytes
+        - block_waste_bytes
+        - block_utilization_pct
+        - backing_savings_bytes
+        - backing_savings_pct
+        - space_delta_bytes
+        - space_saved_pct
+        - packing_efficiency_pct
+      properties:
+        enabled:
+          type: integer
+          enum: [0, 1]
+        present:
+          type: boolean
+          description: Whether zms_stat was present and parsed.
+        ret:
+          type: integer
+        nr_blocks:
+          type: integer
+          minimum: 0
+        used_blocks:
+          type: integer
+          minimum: 0
+        objects:
+          type: integer
+          minimum: 0
+        original_bytes:
+          type: integer
+          minimum: 0
+          description: Original page bytes represented by ZMS objects.
+        stored_bytes:
+          type: integer
+          minimum: 0
+        packed_bytes:
+          type: integer
+          minimum: 0
+        slot_overhead_bytes:
+          type: integer
+          description: Bytes added by ZMS size-class slot alignment.
+        slot_overhead_pct:
+          type: number
+          description: Slot alignment overhead relative to stored_bytes.
+        block_bytes:
+          type: integer
+          minimum: 0
+          description: Physical backing bytes reserved by used_blocks.
+        block_waste_bytes:
+          type: integer
+          description: Unused bytes inside allocated backing blocks.
+        block_utilization_pct:
+          type: number
+          description: packed_bytes divided by block_bytes.
+        backing_savings_bytes:
+          type: integer
+          description: Bytes saved compared with original_bytes.
+        backing_savings_pct:
+          type: number
+          description: backing_savings_bytes divided by original_bytes.
+        space_delta_bytes:
+          type: integer
+          description: Legacy stored_bytes - packed_bytes delta.
+        space_saved_pct:
+          type: number
+          description: Legacy stored-vs-packed delta percent.
+        packing_efficiency_pct:
+          type: number
+          description: Legacy alias for block_utilization_pct.
+    PolicyStatus:
+      type: object
+      required:
+        - zram_wm_ratio
+        - avail_buffers
+        - erm_avail_buffer_enable
+        - erm_avail_buffer
+      properties:
+        zram_wm_ratio:
+          type: integer
+          minimum: 0
+          maximum: 100
+        avail_buffers:
+          $ref: "#/components/schemas/AvailBuffers"
+        erm_avail_buffer_enable:
+          type: integer
+          enum: [0, 1]
+        erm_avail_buffer:
+          $ref: "#/components/schemas/ErmAvailBuffer"
+    StorageStatus:
+      type: object
+      required: [profile_backend]
+      properties:
+        profile_backend:
+          type: string
+          enum: [ksud-module-config, module-data-file]
+        profile_path:
+          type: string
+        data_dir:
+          type: string
+    ProfileEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Profile"
+    ValidationEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [valid]
+              properties:
+                valid:
+                  type: boolean
+                normalized_profile:
+                  $ref: "#/components/schemas/Profile"
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [schema, mode, boot, zram, backing, swap, crystal, policy]
+      properties:
+        schema:
+          type: string
+          const: chswap.profile.v1
+        mode:
+          type: string
+          enum: [diagnostic, full-control]
+        boot:
+          type: object
+          additionalProperties: false
+          required: [post_fs_timeout_ms]
+          properties:
+            post_fs_timeout_ms:
+              type: integer
+              minimum: 1000
+              maximum: 30000
+        zram:
+          type: object
+          additionalProperties: false
+          required: [device, disksize, comp_algorithm]
+          properties:
+            device:
+              type: string
+              pattern: "^zram[0-9]+$"
+            disksize:
+              type: [string, "null"]
+              description: User disksize. Backend rejects values above ceil(RAM) * 2 GiB.
+            comp_algorithm:
+              type: [string, "null"]
+        backing:
+          type: object
+          additionalProperties: false
+          required: [mode]
+          properties:
+            mode:
+              type: string
+              enum: [none, block, loop]
+            loop_size_bytes:
+              type: [integer, "null"]
+              minimum: 1
+              maximum: 34359738368
+        swap:
+          type: object
+          additionalProperties: false
+          required: [enabled, priority]
+          properties:
+            enabled:
+              type: boolean
+              const: true
+            priority:
+              type: integer
+              minimum: -1
+              maximum: 32767
+        crystal:
+          type: object
+          additionalProperties: false
+          required:
+            - enable
+            - core_enable
+            - swapd_pause
+            - loglevel
+            - dev_life
+            - quota_day
+            - zram_increase
+          properties:
+            enable:
+              type: [integer, "null"]
+              enum: [0, 1, null]
+            core_enable:
+              type: [integer, "null"]
+              enum: [0, 1, null]
+            swapd_pause:
+              type: [integer, "null"]
+              enum: [0, 1, null]
+            loglevel:
+              type: [integer, "null"]
+              minimum: 0
+              maximum: 3
+            dev_life:
+              type: [integer, "null"]
+              minimum: 0
+              maximum: 3
+              description: WebUI-managed device-life protection level; 3 is the highest exposed level.
+            quota_day:
+              type: [integer, "null"]
+              minimum: 0
+            zram_increase:
+              type: [integer, "null"]
+              minimum: 0
+              maximum: 1048576
+              description: ZRAM pressure increase in MiB-sized units.
+        policy:
+          type: object
+          additionalProperties: false
+          required:
+            - zram_wm_ratio
+            - avail_buffers
+            - erm_avail_buffer_enable
+          properties:
+            zram_wm_ratio:
+              type: [integer, "null"]
+              minimum: 0
+              maximum: 100
+            avail_buffers:
+              oneOf:
+                - $ref: "#/components/schemas/AvailBuffers"
+                - type: "null"
+            erm_avail_buffer_enable:
+              type: [integer, "null"]
+              enum: [0, 1, null]
+    AvailBuffers:
+      type: object
+      additionalProperties: false
+      required: [avail_mb, min_mb, high_mb, free_swap_threshold_mb]
+      properties:
+        avail_mb:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+        min_mb:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+        high_mb:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+        free_swap_threshold_mb:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+          description: Free-swap threshold in MiB-sized units; WebUI bounds this to uint32 for a uniform safe policy tuple.
+    ErmAvailBuffer:
+      type: object
+      additionalProperties: false
+      required: [min_mb, high_mb]
+      properties:
+        min_mb:
+          type: integer
+          minimum: 0
+        high_mb:
+          type: integer
+          minimum: 0
+    ApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [dry-run, runtime, full-control, reconcile]
+        profile:
+          $ref: "#/components/schemas/Profile"
+    BootApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [phase]
+      properties:
+        phase:
+          type: string
+          enum: [post-fs-data, service, boot-completed]
+        timeout_ms:
+          type: integer
+          minimum: 1000
+          maximum: 30000
+    ApplyEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [changed, degraded, steps]
+              properties:
+                changed:
+                  type: boolean
+                degraded:
+                  type: boolean
+                degraded_reasons:
+                  type: array
+                  items:
+                    type: string
+                steps:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ApplyStep"
+                boot:
+                  $ref: "#/components/schemas/BootStatus"
+    ApplyStep:
+      type: object
+      required: [name, status]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [skipped, unchanged, changed, failed, denied]
+        target:
+          type: string
+        message:
+          type: string
+        error_code:
+          type: string
+        old_value:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: boolean
+            - type: "null"
+        new_value:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: boolean
+            - type: "null"
+    BootStatusEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/BootStatus"
+    BootStatus:
+      type: object
+      required: [phase, result, started_at_ms, finished_at_ms, log_tail]
+      properties:
+        phase:
+          type: string
+          enum: [none, post-fs-data, service, boot-completed]
+        result:
+          type: string
+          enum: [unknown, skipped, active, degraded, failed]
+        started_at_ms:
+          type: integer
+          minimum: 0
+        finished_at_ms:
+          type: integer
+          minimum: 0
+        duration_ms:
+          type: integer
+          minimum: 0
+        degraded_reasons:
+          type: array
+          items:
+            type: string
+        last_error_code:
+          type: string
+        log_path:
+          type: string
+        log_tail:
+          type: array
+          items:
+            type: string
+    DiagnosticsEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string

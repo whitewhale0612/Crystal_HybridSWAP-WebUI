@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "backend_version": "Unknown",
+    "api_version": "1",
+    "frontend_gate": {
+      "allowed": true
+    },
+    "kernel": {
+      "crystal_present": true,
+      "zram_control_present": true,
+      "crystal_report": {
+        "data_path": "private_zram_writeback_and_batchin",
+        "registered_zram": "1"
+      }
+    },
+    "zram": {
+      "comp_algorithms": ["lzo", "lzo-rle", "lz4", "lz4hc", "lz4k", "lz4kd", "deflate", "842", "zstd"],
+      "comp_algorithm_active": "zstd",
+      "mem_total_bytes": 24175136768
+    },
+    "profile_storage": {
+      "backend": "ksud-module-config",
+      "path": "profile.json"
+    }
+  },
+  "warnings": []
+}
