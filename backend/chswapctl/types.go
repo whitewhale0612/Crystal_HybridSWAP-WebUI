@@ -161,6 +161,43 @@ type PolicyStatus struct {
 	ErmAvailBuffer       ErmAvailBuffer `json:"erm_avail_buffer"`
 }
 
+// AppMemInfo is one row of the root memcg memory.total_info_per_app table: a
+// single tracked app's (memcg's) zram/eswap footprint plus the last
+// force-swapin/out counters. Sizes are normalized to bytes; *Pages are 4KiB
+// page counts; the *MB fields are the kernel's compatibility MB values kept
+// verbatim (kernel stats.c notes in_mb is "compatibility only"). The kernel's
+// leading "anon" column is a hardcoded 0 placeholder and is dropped here.
+type AppMemInfo struct {
+	Name             string `json:"name"`
+	Label            string `json:"label,omitempty"` // resolved app display name (may be empty)
+	UID              int64  `json:"uid"`
+	Score            int64  `json:"score"`
+	Policy           int64  `json:"policy"`
+	ZramComprBytes   int64  `json:"zram_compr_bytes"`
+	ZramOrigBytes    int64  `json:"zram_orig_bytes"`
+	EswapComprBytes  int64  `json:"eswap_compr_bytes"`
+	EswapOrigBytes   int64  `json:"eswap_orig_bytes"`
+	SwapoutTrigMB    int64  `json:"swapout_trig_mb"`
+	SwapinMB         int64  `json:"swapin_mb"`
+	SwapinRequest    int64  `json:"swapin_request"`
+	SwapinReqPages   int64  `json:"swapin_req_pages"`
+	SwapinEffPages   int64  `json:"swapin_eff_pages"`
+	SwapinMovedPages int64  `json:"swapin_moved_pages"`
+	SwapinRet        int64  `json:"swapin_ret"`
+}
+
+// AppsResult is the GET /v1/apps payload. Supported is false when the root
+// memcg total_info_per_app node is absent, letting the UI distinguish "no
+// tracked apps" from "kernel does not expose this".
+type AppsResult struct {
+	Supported bool         `json:"supported"`
+	Count     int          `json:"count"`
+	Apps      []AppMemInfo `json:"apps"`
+	// LabelsPending is how many apps still have no attempted display name; the
+	// WebUI polls again to let the backend resolve them incrementally.
+	LabelsPending int `json:"labels_pending"`
+}
+
 type StorageStatus struct {
 	ProfileBackend string `json:"profile_backend"`
 	ProfilePath    string `json:"profile_path,omitempty"`

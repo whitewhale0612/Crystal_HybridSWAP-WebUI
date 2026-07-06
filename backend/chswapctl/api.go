@@ -32,6 +32,12 @@ func (a *App) handleAPI(args []string) bool {
 		}
 		data, warnings := a.status()
 		return a.respondOK(data, warnings...)
+	case method == "GET" && path == "/v1/apps":
+		if !rejectUnexpectedBody(body) {
+			return false
+		}
+		data, warnings := a.appsResult()
+		return a.respondOK(data, warnings...)
 	case method == "GET" && path == "/v1/profile":
 		if !rejectUnexpectedBody(body) {
 			return false

@@ -23,6 +23,54 @@ func TestParseSize(t *testing.T) {
 	}
 }
 
+func TestParseTotalInfoPerApp(t *testing.T) {
+	raw := strings.Join([]string{
+		"anon     zram_c   zram_p   eswap_c  eswap_p  memcg_n                  score    uid      policy   out_trig in_mb    in_request in_req_pages in_eff_pages in_moved_pages in_ret",
+		"0        12000    48000    6000     20000    com.tencent.mm           300      10123    2        5        3        7          1024         900          880          0",
+		"0        3200     9800     0        0        com.android.systemui     100      10045    1        0        0        0          0            0            0            0",
+	}, "\n")
+	got := parseTotalInfoPerApp(raw)
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2", len(got))
+	}
+	want0 := AppMemInfo{
+		Name: "com.tencent.mm", UID: 10123, Score: 300, Policy: 2,
+		ZramComprBytes: 12000 * 1024, ZramOrigBytes: 48000 * 1024,
+		EswapComprBytes: 6000 * 1024, EswapOrigBytes: 20000 * 1024,
+		SwapoutTrigMB: 5, SwapinMB: 3, SwapinRequest: 7,
+		SwapinReqPages: 1024, SwapinEffPages: 900, SwapinMovedPages: 880, SwapinRet: 0,
+	}
+	if !reflect.DeepEqual(got[0], want0) {
+		t.Fatalf("row0 = %+v, want %+v", got[0], want0)
+	}
+	if got[1].Name != "com.android.systemui" || got[1].EswapComprBytes != 0 {
+		t.Fatalf("row1 = %+v", got[1])
+	}
+}
+
+func TestParseTotalInfoPerAppSkipsHeaderAndBadRows(t *testing.T) {
+	raw := strings.Join([]string{
+		"anon zram_c zram_p eswap_c eswap_p memcg_n score uid policy out_trig in_mb in_request in_req_pages in_eff_pages in_moved_pages in_ret",
+		"too few columns here",
+		"",
+		// a value wider than the column still parses because we split on whitespace
+		"0 999999999 200 0 0 com.example 50 10001 0 0 0 0 0 0 0 0",
+	}, "\n")
+	got := parseTotalInfoPerApp(raw)
+	if len(got) != 1 {
+		t.Fatalf("got %d rows, want 1 (header + short + empty skipped)", len(got))
+	}
+	if got[0].Name != "com.example" || got[0].ZramComprBytes != 999999999*1024 {
+		t.Fatalf("unexpected row: %+v", got[0])
+	}
+}
+
+func TestParseTotalInfoPerAppEmpty(t *testing.T) {
+	if got := parseTotalInfoPerApp(""); got == nil || len(got) != 0 {
+		t.Fatalf("empty input should yield non-nil empty slice, got %#v", got)
+	}
+}
+
 func TestParseSizeRejectsOverflow(t *testing.T) {
 	if got := parseSize("9223372036854775807G"); got != -1 {
 		t.Fatalf("overflow parseSize = %d, want -1", got)

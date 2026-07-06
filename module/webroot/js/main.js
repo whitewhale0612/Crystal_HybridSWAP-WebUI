@@ -22,16 +22,16 @@ import { Overview } from "./pages/overview.js";
 import { ZramSetup } from "./pages/zram.js";
 import { CrystalPolicy } from "./pages/crystal.js";
 import { PressurePolicy } from "./pages/pressure.js";
-import { SafetyPage } from "./pages/safety.js";
-import { Diagnostics } from "./pages/diagnostics.js";
+import { Maintenance } from "./pages/maintenance.js";
+import { AppsPage } from "./pages/apps.js";
 
 const PAGES = {
   overview: Overview,
   zram: ZramSetup,
   crystal: CrystalPolicy,
   pressure: PressurePolicy,
-  safety: SafetyPage,
-  diagnostics: Diagnostics,
+  maintenance: Maintenance,
+  apps: AppsPage,
 };
 
 const THEME_ICON = { auto: "contrast", dark: "moon", light: "sun" };

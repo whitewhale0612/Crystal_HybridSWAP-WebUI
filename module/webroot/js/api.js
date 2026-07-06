@@ -146,6 +146,8 @@ async function mockApi(method, path, body) {
     return fetchMock(unsupported ? "capabilities.unsupported" : "capabilities.default");
   if (key === "GET /v1/status")
     return fetchMock(unsupported ? "status.degraded" : "status.active");
+  if (key === "GET /v1/apps")
+    return fetchMock(unsupported ? "apps.unsupported" : "apps.list");
   if (key === "GET /v1/profile") return fetchMock("profile.envelope");
   if (key === "GET /v1/boot/status") return fetchMock("boot.status");
   if (key === "POST /v1/diagnostics/export")
@@ -194,6 +196,7 @@ async function call(method, path, body) {
 export const api = {
   getCapabilities: () => call("GET", "/v1/capabilities"),
   getStatus: () => call("GET", "/v1/status"),
+  getApps: () => call("GET", "/v1/apps"),
   getProfile: () => call("GET", "/v1/profile"),
   getBootStatus: () => call("GET", "/v1/boot/status"),
 

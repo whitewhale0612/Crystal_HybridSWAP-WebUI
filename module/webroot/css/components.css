@@ -968,6 +968,16 @@ select.input {
   background: var(--border);
   margin: var(--sp-2) 0;
 }
+/* section heading inside a page (运行模式 / 排查工具) */
+.page-section {
+  margin-top: var(--sp-2);
+  padding-left: 2px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
 .pill-row {
   display: flex;
   flex-wrap: wrap;
@@ -1180,4 +1190,173 @@ details.expand[open] > summary ~ * {
 }
 .range--off {
   opacity: 0.45;
+}
+
+/* ============ per-app list (应用明细) ============ */
+.app-item {
+  padding: 0;
+  overflow: hidden; /* 折叠时把收缩内容裁进卡片圆角 */
+}
+/* 受控头部（button）：整行可点，带按下 / 悬停反馈 */
+.app-item__summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--dur) var(--ease);
+}
+.app-item__summary:active {
+  background: var(--surface-inset);
+}
+@media (hover: hover) {
+  .app-item__summary:hover {
+    background: var(--surface-inset);
+  }
+}
+.app-item__main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.app-item__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.app-item__name {
+  min-width: 0;
+  flex: 1;
+  font-size: var(--fs-md);
+  font-weight: 640;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-item__pkg {
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-item__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 14px;
+  font-size: var(--fs-xs);
+  color: var(--text-mute);
+  font-variant-numeric: tabular-nums;
+}
+.app-item__metrics .n {
+  color: var(--text-dim);
+  font-weight: 640;
+}
+.app-item__chev {
+  flex: none;
+  color: var(--text-mute);
+  display: inline-flex;
+  transition: transform var(--dur-slow) var(--ease), color var(--dur) var(--ease);
+}
+.app-item.is-open .app-item__chev {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+/* 平滑展开/收起：grid-template-rows 0fr <-> 1fr（内层 overflow 裁剪） */
+.app-item__wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-slow) var(--ease);
+}
+.app-item.is-open .app-item__wrap {
+  grid-template-rows: 1fr;
+}
+.app-item__wrap > .app-item__detail {
+  overflow: hidden;
+  min-height: 0;
+}
+.app-item__detail {
+  padding: 0 var(--sp-4);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), padding var(--dur-slow) var(--ease);
+}
+.app-item.is-open .app-item__detail {
+  padding: 2px var(--sp-4) var(--sp-4);
+  opacity: 1;
+}
+
+/* 嵌套折叠：强制换入记录（日常也在，但默认收起省空间） */
+.app-sub {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.app-sub__summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 2px 6px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.app-sub__title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-sub__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.app-sub__chev {
+  flex: none;
+  color: var(--text-mute);
+  display: inline-flex;
+  transition: transform var(--dur-slow) var(--ease);
+}
+.app-sub.is-open .app-sub__chev {
+  transform: rotate(90deg);
+}
+.app-sub__wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-slow) var(--ease);
+}
+.app-sub.is-open .app-sub__wrap {
+  grid-template-rows: 1fr;
+}
+.app-sub__wrap > .app-sub__detail {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.app-sub.is-open .app-sub__detail {
+  opacity: 1;
+  padding-bottom: 4px;
 }

@@ -93,6 +93,61 @@ func (a *App) status() (Status, []Warning) {
 	return status, warnings
 }
 
+// appsResult reads the root memcg's memory.total_info_per_app table (one row
+// per tracked app/cgroup). Read-only: when the node is absent it returns
+// Supported=false with an empty list rather than an error, so the UI can show a
+// friendly "unsupported" state instead of failing.
+func (a *App) appsResult() (AppsResult, []Warning) {
+	empty := AppsResult{Supported: false, Count: 0, Apps: []AppMemInfo{}}
+	memcg := a.memcgRoot()
+	if memcg == "" {
+		return empty, nil
+	}
+	path := filepath.Join(memcg, "memory.total_info_per_app")
+	if !a.exists(path) {
+		return empty, nil
+	}
+	apps := parseTotalInfoPerApp(readTrim(path))
+	pending := a.fillAppLabels(apps)
+	return AppsResult{Supported: true, Count: len(apps), Apps: apps, LabelsPending: pending}, nil
+}
+
+// parseTotalInfoPerApp parses the whitespace-delimited total_info_per_app table
+// (a header row followed by one row per app, 16 columns). Tokens are mapped by
+// position after splitting on runs of whitespace — values can exceed the fixed
+// column width, so byte offsets are unreliable. The header row (first token is
+// the literal "anon") and malformed short rows are skipped. The KB size columns
+// are normalized to bytes; the leading anon placeholder column is discarded.
+func parseTotalInfoPerApp(raw string) []AppMemInfo {
+	out := []AppMemInfo{}
+	const kb = 1024
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	for scanner.Scan() {
+		f := strings.Fields(scanner.Text())
+		if len(f) < 16 || f[0] == "anon" {
+			continue
+		}
+		out = append(out, AppMemInfo{
+			ZramComprBytes:   parseIntDefault(f[1], 0) * kb,
+			ZramOrigBytes:    parseIntDefault(f[2], 0) * kb,
+			EswapComprBytes:  parseIntDefault(f[3], 0) * kb,
+			EswapOrigBytes:   parseIntDefault(f[4], 0) * kb,
+			Name:             f[5],
+			Score:            parseIntDefault(f[6], 0),
+			UID:              parseIntDefault(f[7], 0),
+			Policy:           parseIntDefault(f[8], 0),
+			SwapoutTrigMB:    parseIntDefault(f[9], 0),
+			SwapinMB:         parseIntDefault(f[10], 0),
+			SwapinRequest:    parseIntDefault(f[11], 0),
+			SwapinReqPages:   parseIntDefault(f[12], 0),
+			SwapinEffPages:   parseIntDefault(f[13], 0),
+			SwapinMovedPages: parseIntDefault(f[14], 0),
+			SwapinRet:        parseIntDefault(f[15], 0),
+		})
+	}
+	return out
+}
+
 func (a *App) zramStatus(device string) ZramStatus {
 	if device == "" {
 		device = a.firstZram()

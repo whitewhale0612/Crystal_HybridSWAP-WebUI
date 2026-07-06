@@ -49,6 +49,19 @@ paths:
                 $ref: "#/components/schemas/StatusEnvelope"
         "4XX":
           $ref: "#/components/responses/Failure"
+  /v1/apps:
+    get:
+      operationId: getApps
+      summary: Return per-app memory/swap breakdown (root memcg total_info_per_app).
+      responses:
+        "200":
+          description: Per-app breakdown envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppsEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
   /v1/profile:
     get:
       operationId: getProfile
@@ -841,3 +854,93 @@ components:
               properties:
                 path:
                   type: string
+    AppsEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AppsResult"
+    AppsResult:
+      type: object
+      required: [supported, count, apps, labels_pending]
+      properties:
+        supported:
+          type: boolean
+          description: False when the root memcg memory.total_info_per_app node is absent.
+        count:
+          type: integer
+          minimum: 0
+        labels_pending:
+          type: integer
+          minimum: 0
+          description: Apps whose display name is not yet resolved; the WebUI polls again to let the backend resolve them incrementally.
+        apps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppMemInfo"
+    AppMemInfo:
+      type: object
+      description: One row of memory.total_info_per_app; sizes normalized to bytes.
+      required:
+        - name
+        - uid
+        - score
+        - policy
+        - zram_compr_bytes
+        - zram_orig_bytes
+        - eswap_compr_bytes
+        - eswap_orig_bytes
+        - swapout_trig_mb
+        - swapin_mb
+        - swapin_request
+        - swapin_req_pages
+        - swapin_eff_pages
+        - swapin_moved_pages
+        - swapin_ret
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+          description: Resolved app display name; omitted/empty when not yet resolved.
+        uid:
+          type: integer
+        score:
+          type: integer
+        policy:
+          type: integer
+        zram_compr_bytes:
+          type: integer
+          minimum: 0
+        zram_orig_bytes:
+          type: integer
+          minimum: 0
+        eswap_compr_bytes:
+          type: integer
+          minimum: 0
+        eswap_orig_bytes:
+          type: integer
+          minimum: 0
+        swapout_trig_mb:
+          type: integer
+          description: Kernel out_trig value, in MB.
+        swapin_mb:
+          type: integer
+          description: Kernel in_mb compatibility field (MB); prefer the *_pages fields.
+        swapin_request:
+          type: integer
+        swapin_req_pages:
+          type: integer
+          minimum: 0
+          description: 4KiB page count.
+        swapin_eff_pages:
+          type: integer
+          minimum: 0
+          description: 4KiB page count.
+        swapin_moved_pages:
+          type: integer
+          minimum: 0
+          description: 4KiB page count.
+        swapin_ret:
+          type: integer

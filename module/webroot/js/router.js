@@ -4,11 +4,11 @@ import { useState, useEffect } from "../vendor/preact.mjs";
 
 export const ROUTES = [
   { id: "overview", label: "概览", icon: "gauge" },
+  { id: "apps", label: "明细", icon: "layers" },
   { id: "zram", label: "ZRAM", icon: "chip" },
   { id: "crystal", label: "策略", icon: "sliders" },
   { id: "pressure", label: "压力", icon: "waves" },
-  { id: "safety", label: "安全", icon: "shield" },
-  { id: "diagnostics", label: "诊断", icon: "stethoscope" },
+  { id: "maintenance", label: "维护", icon: "stethoscope" },
 ];
 
 const IDS = ROUTES.map((r) => r.id);

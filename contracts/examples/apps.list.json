@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "supported": true,
+    "count": 2,
+    "labels_pending": 0,
+    "apps": [
+      {
+        "name": "com.tencent.mm",
+        "label": "微信",
+        "uid": 10123,
+        "score": 300,
+        "policy": 2,
+        "zram_compr_bytes": 51380224,
+        "zram_orig_bytes": 201326592,
+        "eswap_compr_bytes": 25165824,
+        "eswap_orig_bytes": 83886080,
+        "swapout_trig_mb": 7,
+        "swapin_mb": 3,
+        "swapin_request": 9,
+        "swapin_req_pages": 1536,
+        "swapin_eff_pages": 1400,
+        "swapin_moved_pages": 1360,
+        "swapin_ret": 0
+      },
+      {
+        "name": "com.android.systemui",
+        "uid": 10012,
+        "score": 100,
+        "policy": 1,
+        "zram_compr_bytes": 5242880,
+        "zram_orig_bytes": 18874368,
+        "eswap_compr_bytes": 0,
+        "eswap_orig_bytes": 0,
+        "swapout_trig_mb": 0,
+        "swapin_mb": 0,
+        "swapin_request": 0,
+        "swapin_req_pages": 0,
+        "swapin_eff_pages": 0,
+        "swapin_moved_pages": 0,
+        "swapin_ret": 0
+      }
+    ]
+  },
+  "warnings": []
+}
