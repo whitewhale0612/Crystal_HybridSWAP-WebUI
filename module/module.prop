@@ -1,7 +1,7 @@
 id=crystal_hybridswap_webui
 name=Crystal Hybridswap WebUI
-version=0.3.2
-versionCode=5
+version=0.4.0
+versionCode=6
 author=阿菌•未霜
 description=WebUI backend and boot owner for crystal_hybridswap ZRAM control.
 web=true
