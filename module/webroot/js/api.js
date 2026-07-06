@@ -124,13 +124,13 @@ function ok(data, warnings) {
   return { ok: true, schema: "chswap.api.v1", data, warnings: warnings || [] };
 }
 
-function gateClosed() {
+function gateClosed(code, message) {
   return {
     ok: false,
     schema: "chswap.api.v1",
     error: {
-      code: "E_KERNEL_NODE_MISSING",
-      message: "kernel does not expose the required Crystal Hybridswap management nodes",
+      code: code || "E_KERNEL_NODE_MISSING",
+      message: message || "kernel does not expose the required Crystal Hybridswap management nodes",
     },
     warnings: [],
   };
@@ -138,14 +138,18 @@ function gateClosed() {
 
 async function mockApi(method, path, body) {
   await delay(MOCK_DELAY);
-  const unsupported = mockGate() === "unsupported";
+  const gate = mockGate();
+  const unsupported = gate === "unsupported"; // no Crystal Hybridswap at all
+  const outdated = gate === "outdated"; // present but kernel too old (missing APIs)
   const key = `${method} ${path}`;
 
   // read-only endpoints: always available
   if (key === "GET /v1/capabilities")
-    return fetchMock(unsupported ? "capabilities.unsupported" : "capabilities.default");
+    return fetchMock(
+      outdated ? "capabilities.api-outdated" : unsupported ? "capabilities.unsupported" : "capabilities.default"
+    );
   if (key === "GET /v1/status")
-    return fetchMock(unsupported ? "status.degraded" : "status.active");
+    return fetchMock(outdated ? "status.api-outdated" : unsupported ? "status.degraded" : "status.active");
   if (key === "GET /v1/apps")
     return fetchMock(unsupported ? "apps.unsupported" : "apps.list");
   if (key === "GET /v1/profile") return fetchMock("profile.envelope");
@@ -172,6 +176,11 @@ async function mockApi(method, path, body) {
 
   // Mutating endpoints honour the hard gate.
   if (unsupported) return gateClosed();
+  if (outdated)
+    return gateClosed(
+      "E_KERNEL_API_OUTDATED",
+      "kernel is too old: Crystal Hybridswap is present but missing stat fields the WebUI requires; update to the current crystal_hybridswap kernel"
+    );
 
   if (key === "PUT /v1/profile") return ok(body, []);
   if (key === "POST /v1/apply" || key === "POST /v1/boot/apply")

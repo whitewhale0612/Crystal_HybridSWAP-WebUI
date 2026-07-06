@@ -15,7 +15,7 @@ func (a *App) capabilities() (Capabilities, []Warning) {
 	caps := Capabilities{
 		BackendVersion: a.moduleVersion(),
 		APIVersion:     apiVersion,
-		FrontendGate:   gateForMissing(missing),
+		FrontendGate:   gateFor(missing, a.kernelApiMissing("zram0")),
 		Kernel: KernelCaps{
 			CrystalPresent:       a.crystalPresent(report),
 			ZramControlPresent:   a.exists(a.sys("class/zram-control")),
@@ -77,7 +77,7 @@ func (a *App) status() (Status, []Warning) {
 	}
 	status := Status{
 		Mode:            profile.Mode,
-		FrontendGate:    gateForMissing(missing),
+		FrontendGate:    gateFor(missing, a.kernelApiMissing(profile.Zram.Device)),
 		Degraded:        len(reasons) > 0,
 		DegradedReasons: reasons,
 		Zram:            zram,
@@ -91,6 +91,52 @@ func (a *App) status() (Status, []Warning) {
 	warnings := append([]Warning{}, unsupportedWarnings(missing)...)
 	warnings = append(warnings, profileWarnings...)
 	return status, warnings
+}
+
+// requiredCrystalStatApis is the single source of truth for the
+// hybridswap_crystal_stat fields the WebUI reads by name. A present node that
+// lacks any of these predates the current ABI ("kernel too old"), so an allowed
+// UI is guaranteed every value it renders exists and never reads back a bogus 0.
+//
+// Only fields this node actually emits AND the UI consumes belong here:
+// dev_life is sourced from the hybridswap_dev_life node (crystal_stat has no
+// dev_life_level), and the writeback-quota page counters are superseded by the
+// authoritative *_bytes fields — including any of those would false-gate a good
+// kernel or gate on a field the UI no longer reads.
+var requiredCrystalStatApis = []string{
+	// writeback quota — authoritative byte counters (crystalStatus)
+	"writeback_quota_limit_bytes",
+	"writeback_quota_used_bytes",
+	"writeback_quota_remaining_bytes",
+	// ZMS physical-writeback counters (flash_io)
+	"zram_bd_physical_write_pages",
+	"zram_bd_physical_write_bytes",
+	"zram_bd_physical_write_ios_count",
+	"zram_bd_physical_write_failed_pages",
+	"zram_bd_physical_read_pages",
+	"zram_bd_physical_read_ios_count",
+	"zram_bd_physical_read_failed_pages",
+}
+
+// kernelApiMissing lists required stat fields absent from an otherwise-present
+// hybridswap_crystal_stat. It returns nil when the node is missing entirely
+// (that is a node-missing gate via managementSurfaceMissing) or up to date, so
+// the caller only sees the "kernel too old" tier here.
+func (a *App) kernelApiMissing(device string) []string {
+	if device == "" {
+		device = "zram0"
+	}
+	stat := parseKeyValue(readTrim(a.sys(filepath.Join("block", device, "hybridswap_crystal_stat"))), " ")
+	if len(stat) == 0 {
+		return nil
+	}
+	var missing []string
+	for _, k := range requiredCrystalStatApis {
+		if _, ok := stat[k]; !ok {
+			missing = append(missing, k)
+		}
+	}
+	return missing
 }
 
 // appsResult reads the root memcg's memory.total_info_per_app table (one row

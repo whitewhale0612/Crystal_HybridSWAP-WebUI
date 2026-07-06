@@ -138,13 +138,26 @@ func respondUnsupportedWithWarnings(missing []string, extra []Warning) bool {
 	return false
 }
 
-func gateForMissing(missing []string) FrontendGate {
-	if len(missing) == 0 {
-		return FrontendGate{Allowed: true}
+// gateFor decides the whole-UI gate in two tiers. A missing management node
+// means Crystal Hybridswap is absent and wins (unsupported kernel). Otherwise a
+// present surface that still lacks required stat fields means the kernel is too
+// old; that gate names the missing APIs. The WebUI targets the current ABI and
+// keeps no fallback path for older kernels.
+func gateFor(missing []string, apiMissing []string) FrontendGate {
+	if len(missing) > 0 {
+		return FrontendGate{
+			Allowed:    false,
+			ReasonCode: unsupportedCode,
+			Message:    unsupportedMessage,
+		}
 	}
-	return FrontendGate{
-		Allowed:    false,
-		ReasonCode: unsupportedCode,
-		Message:    unsupportedMessage,
+	if len(apiMissing) > 0 {
+		return FrontendGate{
+			Allowed:     false,
+			ReasonCode:  apiOutdatedCode,
+			Message:     apiOutdatedMessage,
+			MissingApis: apiMissing,
+		}
 	}
+	return FrontendGate{Allowed: true}
 }

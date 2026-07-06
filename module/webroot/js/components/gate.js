@@ -9,6 +9,8 @@ import { toast, toastError } from "../store.js";
 
 export function GateView({ reason, warnings }) {
   const [busy, setBusy] = useState(false);
+  const outdated = reason && reason.code === "E_KERNEL_API_OUTDATED";
+  const missingApis = (reason && reason.missing_apis) || [];
 
   async function exportDiag() {
     setBusy(true);
@@ -24,11 +26,12 @@ export function GateView({ reason, warnings }) {
 
   return html`<div class="gate fade-in">
     <div class="gate__inner">
-      <div class="gate__badge">${Icon({ name: "lock", size: 40 })}</div>
-      <h2>管理节点不可用</h2>
+      <div class="gate__badge">${Icon({ name: outdated ? "alert" : "lock", size: 40 })}</div>
+      <h2>${outdated ? "内核版本过旧" : "不支持的内核"}</h2>
       <p class="dim">
-        当前内核没有暴露完整的 Crystal Hybridswap 管理节点，
-        调优与应用功能已停用以确保安全。
+        ${outdated
+          ? "当前内核已包含 Crystal Hybridswap，但缺少本界面所需的部分统计接口。请更新到最新内核后重新打开。"
+          : "当前内核没有暴露 Crystal Hybridswap 管理节点，调优与应用功能已停用以确保安全。"}
       </p>
 
       ${reason &&
@@ -39,6 +42,15 @@ export function GateView({ reason, warnings }) {
           children: reason.message,
         })}
       </div>`}
+
+      ${outdated && missingApis.length
+        ? html`<div class="stack stack--sm" style="width:100%">
+            <div class="muted" style="font-size:var(--fs-xs)">缺少的内核接口字段（${missingApis.length}）</div>
+            <div class="gate__apis">
+              ${missingApis.map((n) => html`<code class="gate__api">${n}</code>`)}
+            </div>
+          </div>`
+        : null}
 
       ${warnings && warnings.length
         ? html`<div class="stack stack--sm" style="width:100%">

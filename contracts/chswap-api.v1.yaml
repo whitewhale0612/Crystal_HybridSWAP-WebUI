@@ -363,9 +363,17 @@ components:
         reason_code:
           type: string
           enum:
-            - E_KERNEL_NODE_MISSING
+            - E_KERNEL_NODE_MISSING   # Crystal Hybridswap absent -> unsupported kernel
+            - E_KERNEL_API_OUTDATED   # present but missing required stat fields -> too old
         message:
           type: string
+        missing_apis:
+          type: array
+          description: >-
+            Required kernel stat fields absent when reason_code is
+            E_KERNEL_API_OUTDATED, so the UI can name what to update.
+          items:
+            type: string
     ZramStatus:
       type: object
       required: [device, found, initstate, active_swap]

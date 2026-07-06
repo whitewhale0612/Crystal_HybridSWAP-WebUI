@@ -159,7 +159,10 @@ export async function loadAll() {
       boot: boot.data,
       profile,
       gateAllowed: gate.allowed !== false,
-      gateReason: gate.allowed === false ? { code: gate.reason_code, message: gate.message } : null,
+      gateReason:
+        gate.allowed === false
+          ? { code: gate.reason_code, message: gate.message, missing_apis: gate.missing_apis }
+          : null,
       warnings: collectWarnings(caps, status, boot),
       loadError: null,
       statusLoading: false,
@@ -288,7 +291,10 @@ export async function refreshStatus() {
     setState({
       status: status.data,
       gateAllowed: gate.allowed !== false,
-      gateReason: gate.allowed === false ? { code: gate.reason_code, message: gate.message } : null,
+      gateReason:
+        gate.allowed === false
+          ? { code: gate.reason_code, message: gate.message, missing_apis: gate.missing_apis }
+          : null,
       warnings: collectWarnings({ warnings: state.warnings }, status),
       statusLoading: false,
     });

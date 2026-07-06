@@ -961,6 +961,22 @@ select.input {
 .gate h2 {
   font-size: var(--fs-2xl);
 }
+/* missing kernel-API field chips (kernel-too-old gate) */
+.gate__apis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.gate__api {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
 
 /* ============ misc ============ */
 .divider {

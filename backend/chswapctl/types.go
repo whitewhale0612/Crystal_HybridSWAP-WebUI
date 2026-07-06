@@ -9,6 +9,12 @@ const (
 const unsupportedMessage = "kernel does not expose the required Crystal Hybridswap management nodes"
 const unsupportedCode = "E_KERNEL_NODE_MISSING"
 
+// Crystal Hybridswap is present but the kernel predates part of the ABI the
+// WebUI needs. The UI targets the current ABI and keeps no fallback for older
+// kernels, so it gates with this reason and lists the missing API fields.
+const apiOutdatedMessage = "kernel is too old: Crystal Hybridswap is present but missing stat fields the WebUI requires; update to the current crystal_hybridswap kernel"
+const apiOutdatedCode = "E_KERNEL_API_OUTDATED"
+
 type App struct {
 	SysRoot        string
 	ProcRoot       string
@@ -48,6 +54,9 @@ type FrontendGate struct {
 	Allowed    bool   `json:"allowed"`
 	ReasonCode string `json:"reason_code,omitempty"`
 	Message    string `json:"message,omitempty"`
+	// MissingApis lists the required kernel stat fields that are absent when
+	// ReasonCode is E_KERNEL_API_OUTDATED, so the UI can name what to update.
+	MissingApis []string `json:"missing_apis,omitempty"`
 }
 
 type Capabilities struct {
