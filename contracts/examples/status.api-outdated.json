@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "mode": "full-control",
+    "frontend_gate": {
+      "allowed": false,
+      "reason_code": "E_KERNEL_API_OUTDATED",
+      "message": "kernel is too old: Crystal Hybridswap is present but missing stat fields the WebUI requires; update to the current crystal_hybridswap kernel",
+      "missing_apis": [
+        "writeback_quota_used_bytes",
+        "writeback_quota_remaining_bytes",
+        "zram_bd_physical_write_pages",
+        "zram_bd_physical_write_bytes",
+        "zram_bd_physical_write_ios_count",
+        "zram_bd_physical_write_failed_pages",
+        "zram_bd_physical_read_pages",
+        "zram_bd_physical_read_ios_count",
+        "zram_bd_physical_read_failed_pages"
+      ]
+    },
+    "degraded": false,
+    "degraded_reasons": []
+  },
+  "warnings": []
+}

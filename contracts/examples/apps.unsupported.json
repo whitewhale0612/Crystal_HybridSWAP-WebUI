@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "supported": false,
+    "count": 0,
+    "apps": []
+  },
+  "warnings": []
+}

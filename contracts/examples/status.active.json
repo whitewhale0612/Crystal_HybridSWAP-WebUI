@@ -36,7 +36,17 @@
       "quota_day": 10737418240,
       "quota_used": 2147483648,
       "quota_remaining": 8589934592,
-      "zram_increase": 75
+      "zram_increase": 75,
+      "flash_io": {
+        "write_bytes": 1332662272,
+        "write_pages": 325357,
+        "write_ios": 1041,
+        "write_failed_pages": 0,
+        "read_bytes": 220200960,
+        "read_pages": 53760,
+        "read_ios": 528,
+        "read_failed_pages": 0
+      }
     },
     "zms": {
       "enabled": 1,
