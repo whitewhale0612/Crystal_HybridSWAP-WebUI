@@ -65,6 +65,25 @@ func TestParseTotalInfoPerAppSkipsHeaderAndBadRows(t *testing.T) {
 	}
 }
 
+func TestParseTotalInfoPerAppDerivedUID(t *testing.T) {
+	// crystal a591549: the uid column is now kernel-derived and may report the
+	// sentinels -1 (unknown/empty) and -2 (mixed UIDs); they must pass through
+	// verbatim so the WebUI can render them as text.
+	raw := strings.Join([]string{
+		"anon zram_c zram_p eswap_c eswap_p memcg_n score uid policy out_trig in_mb in_request in_req_pages in_eff_pages in_moved_pages in_ret",
+		"0 100 400 0 0 unknown_group 50 -1 0 0 0 0 0 0 0 0",
+		"0 200 800 0 0 mixed_group 60 -2 0 0 0 0 0 0 0 0",
+		"0 300 900 0 0 com.example 70 10188 0 0 0 0 0 0 0 0",
+	}, "\n")
+	got := parseTotalInfoPerApp(raw)
+	if len(got) != 3 {
+		t.Fatalf("got %d rows, want 3", len(got))
+	}
+	if got[0].UID != -1 || got[1].UID != -2 || got[2].UID != 10188 {
+		t.Fatalf("UIDs = %d, %d, %d; want -1, -2, 10188", got[0].UID, got[1].UID, got[2].UID)
+	}
+}
+
 func TestParseTotalInfoPerAppEmpty(t *testing.T) {
 	if got := parseTotalInfoPerApp(""); got == nil || len(got) != 0 {
 		t.Fatalf("empty input should yield non-nil empty slice, got %#v", got)

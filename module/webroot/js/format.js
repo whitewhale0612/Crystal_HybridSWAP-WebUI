@@ -105,6 +105,24 @@ export function fmtQuota(bytes) {
   return `${fmtBytes(bytes)}/日`;
 }
 
+/**
+ * Kernel-derived memcg app UID (crystal a591549 made memory.app_uid read-only):
+ * -1 means unknown/empty cgroup, -2 means the cgroup mixes several UIDs, and
+ * any non-negative value is a real Linux UID. Special values render as text so
+ * they are never mistaken for an actual UID.
+ */
+export function fmtUid(uid) {
+  const n = Number(uid);
+  if (n === -1) return "未知";
+  if (n === -2) return "多 UID";
+  return String(uid);
+}
+
+/** True for a real, resolvable Linux UID (non-negative). */
+export function isRealUid(uid) {
+  return Number(uid) >= 0;
+}
+
 export function yesNo(v) {
   return v ? "是" : "否";
 }

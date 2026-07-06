@@ -938,6 +938,9 @@ components:
           description: Resolved app display name; omitted/empty when not yet resolved.
         uid:
           type: integer
+          description: >-
+            Kernel-derived memcg app UID (read-only since crystal a591549):
+            -1 unknown/empty cgroup, -2 mixed UIDs, non-negative real Linux UID.
         score:
           type: integer
         policy:

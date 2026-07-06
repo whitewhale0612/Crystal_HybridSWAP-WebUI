@@ -9,7 +9,7 @@ import { useStore, toastError } from "../store.js";
 import { api } from "../api.js";
 import { Banner, Button, Chip, KV, Skeleton, TextField, Segmented } from "../components/ui.js";
 import { Icon } from "../icons.js";
-import { fmtBytes, fmtInt } from "../format.js";
+import { fmtBytes, fmtInt, fmtUid, isRealUid } from "../format.js";
 
 const PAGE_BYTES = 4096;
 
@@ -71,7 +71,7 @@ function AppCard({ app }) {
       <div class="app-item__main">
         <div class="app-item__title">
           <span class="app-item__name">${title}</span>
-          ${Chip({ kind: "muted", children: `uid ${app.uid}` })}
+          ${Chip({ kind: "muted", children: isRealUid(app.uid) ? `uid ${app.uid}` : fmtUid(app.uid) })}
         </div>
         ${showPkg && html`<div class="app-item__pkg">${app.name}</div>`}
         <div class="app-item__metrics">
@@ -85,7 +85,7 @@ function AppCard({ app }) {
     <div class="app-item__wrap">
       <div class="app-item__detail">
         ${KV({ k: "包名", mono: true, children: app.name || "未知" })}
-        ${KV({ k: "UID", children: app.uid })}
+        ${KV({ k: "UID", children: fmtUid(app.uid) })}
         ${KV({ k: "优先级分数", children: app.score })}
         ${KV({ k: "ZRAM 压缩后", children: fmtBytes(app.zram_compr_bytes) })}
         ${KV({ k: "ZRAM 原始", children: fmtBytes(app.zram_orig_bytes) })}

@@ -192,6 +192,11 @@ type PolicyStatus struct {
 // page counts; the *MB fields are the kernel's compatibility MB values kept
 // verbatim (kernel stats.c notes in_mb is "compatibility only"). The kernel's
 // leading "anon" column is a hardcoded 0 placeholder and is dropped here.
+//
+// UID is the kernel-derived memcg app UID (crystal a591549 made memory.app_uid
+// read-only, scanned from the cgroup's tasks): -1 means unknown/empty, -2 means
+// the cgroup mixes several UIDs, and non-negative values are real Linux UIDs.
+// The value is passed through verbatim; the WebUI renders the sentinels as text.
 type AppMemInfo struct {
 	Name             string `json:"name"`
 	Label            string `json:"label,omitempty"` // resolved app display name (may be empty)
