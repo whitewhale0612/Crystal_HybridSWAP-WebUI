@@ -9,7 +9,7 @@ import { api } from "../api.js";
 import { Card, ToggleRow, Banner, KV, Button, Chip, Expand } from "../components/ui.js";
 import { SaveBar, ApplyResult } from "../components/savebar.js";
 import { BootChip } from "../components/badges.js";
-import { fmtDurationMs, fmtTimeMs } from "../format.js";
+import { fmtDurationMs, fmtTimeMs, fmtBytes, fmtInt } from "../format.js";
 
 export function Maintenance() {
   const { draft, boot, status, caps, profile, warnings } = useStore((s) => ({
@@ -28,6 +28,7 @@ export function Maintenance() {
   const z = (status && status.zram) || {};
   const k = (caps && caps.kernel) || {};
   const st = (status && status.storage) || {};
+  const fio = (status && status.crystal && status.crystal.flash_io) || {};
 
   async function exportDiag() {
     setBusy(true);
@@ -131,6 +132,23 @@ export function Maintenance() {
         ${st.profile_backend && KV({ k: "配置后端", children: st.profile_backend })}
         ${st.profile_path && KV({ k: "配置路径", mono: true, children: st.profile_path })}
         ${st.data_dir && KV({ k: "数据目录", mono: true, children: st.data_dir })}
+      </div>
+    <//>
+
+    <${Card} title="闪存 I/O" icon="database"
+      note="ZMS 物理写回">
+      <div>
+        ${KV({ k: "写入闪存", children: `${fmtBytes(fio.write_bytes)} · ${fmtInt(fio.write_pages)} 页` })}
+        ${KV({ k: "写 I/O 次数", children: fmtInt(fio.write_ios) })}
+        ${KV({ k: "写失败页", children: fio.write_failed_pages > 0
+          ? html`<span style="color:var(--danger)">${fmtInt(fio.write_failed_pages)}</span>`
+          : "0" })}
+        ${KV({ k: "从闪存读回", children: `${fmtBytes(fio.read_bytes)} · ${fmtInt(fio.read_pages)} 页` })}
+        ${KV({ k: "读 I/O 次数", children: fmtInt(fio.read_ios) })}
+        ${KV({ k: "读失败页", children: fio.read_failed_pages > 0
+          ? html`<span style="color:var(--danger)">${fmtInt(fio.read_failed_pages)}</span>`
+          : "0" })}
+        ${KV({ k: "配额计费口径", children: "ZMS 物理写字节" })}
       </div>
     <//>
 

@@ -27,6 +27,8 @@ export function Overview() {
   const sw = status.swap || {};
   const zms = status.zms || {};
   const c = status.crystal || {};
+  const fio = c.flash_io || {};
+  const flashFailed = (fio.write_failed_pages || 0) + (fio.read_failed_pages || 0);
   const mm = z.mm_stat || {};
 
   const swapRatio = pct(sw.used_bytes, sw.size_bytes);
@@ -149,6 +151,17 @@ export function Overview() {
           ${KV({ k: "配额上限", children: fmtQuota(c.quota_day) })}
           ${KV({ k: "剩余", children: fmtBytes(c.quota_remaining) })}
           ${KV({ k: "ZRAM 压力增量", children: c.zram_increase == null ? "—" : `${c.zram_increase} MiB` })}
+          <div class="divider"></div>
+          <div class="row" style="gap:14px;align-items:flex-start">
+            ${Stat({ label: "写入闪存", value: fmtBytes(fio.write_bytes), sub: `${fmtInt(fio.write_pages)} 页` })}
+            ${Stat({ label: "从闪存读回", value: fmtBytes(fio.read_bytes), sub: `${fmtInt(fio.read_pages)} 页` })}
+          </div>
+          <div class="muted" style="font-size:var(--fs-xs)">
+            写 I/O ${fmtInt(fio.write_ios)} 次 · 读 ${fmtInt(fio.read_ios)} 次 ·
+            ${flashFailed > 0
+              ? html`<span style="color:var(--danger)">失败 ${fmtInt(flashFailed)} 页</span>`
+              : "失败 0"}
+          </div>
         </div>
       <//>
 

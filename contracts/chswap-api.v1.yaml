@@ -435,6 +435,7 @@ components:
         - quota_used
         - quota_remaining
         - zram_increase
+        - flash_io
       properties:
         enable:
           type: integer
@@ -463,6 +464,29 @@ components:
         zram_increase:
           type: integer
           minimum: 0
+        flash_io:
+          type: object
+          description: >-
+            Real backing-device (flash) I/O from ZMS physical-writeback
+            accounting: bytes/pages/IOs written and read, plus failures.
+          required:
+            - write_bytes
+            - write_pages
+            - write_ios
+            - write_failed_pages
+            - read_bytes
+            - read_pages
+            - read_ios
+            - read_failed_pages
+          properties:
+            write_bytes: { type: integer, minimum: 0 }
+            write_pages: { type: integer, minimum: 0 }
+            write_ios: { type: integer, minimum: 0 }
+            write_failed_pages: { type: integer, minimum: 0 }
+            read_bytes: { type: integer, minimum: 0 }
+            read_pages: { type: integer, minimum: 0 }
+            read_ios: { type: integer, minimum: 0 }
+            read_failed_pages: { type: integer, minimum: 0 }
           description: ZRAM pressure increase in MiB-sized units.
     ZmsStatus:
       type: object

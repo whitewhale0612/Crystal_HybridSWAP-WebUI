@@ -494,6 +494,56 @@ func TestCrystalStatusUsesDevLifeLevelStat(t *testing.T) {
 	}
 }
 
+func TestCrystalStatusFlashIOAndByteQuota(t *testing.T) {
+	app := testApp(t)
+	zdir := filepath.Join(app.SysRoot, "block", "zram0")
+	if err := mkdirAll(zdir); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(filepath.Join(zdir, "hybridswap_crystal_stat"),
+		"writeback_quota_used_bytes 2097152\n"+
+			"writeback_quota_remaining_bytes 4194304\n"+
+			"zram_bd_physical_write_bytes 1048576\n"+
+			"zram_bd_physical_write_pages 256\n"+
+			"zram_bd_physical_write_ios_count 12\n"+
+			"zram_bd_physical_write_failed_pages 1\n"+
+			"zram_bd_physical_read_pages 128\n"+
+			"zram_bd_physical_read_ios_count 6\n"+
+			"zram_bd_physical_read_failed_pages 0\n")
+
+	got := app.crystalStatus("zram0")
+	if got.QuotaUsed != 2097152 || got.QuotaRemaining != 4194304 {
+		t.Fatalf("quota bytes = %d/%d, want 2097152/4194304", got.QuotaUsed, got.QuotaRemaining)
+	}
+	f := got.FlashIO
+	if f.WriteBytes != 1048576 || f.WritePages != 256 || f.WriteIOs != 12 || f.WriteFailedPages != 1 {
+		t.Fatalf("flash write = %+v", f)
+	}
+	if f.ReadPages != 128 || f.ReadBytes != 128*4096 || f.ReadIOs != 6 || f.ReadFailedPages != 0 {
+		t.Fatalf("flash read = %+v", f)
+	}
+}
+
+func TestKernelApiMissingListsAbsentFields(t *testing.T) {
+	app := testApp(t)
+	zdir := filepath.Join(app.SysRoot, "block", "zram0")
+	if err := mkdirAll(zdir); err != nil {
+		t.Fatal(err)
+	}
+	// Node present but predates the physical-writeback fields → too old.
+	writeFile(filepath.Join(zdir, "hybridswap_crystal_stat"),
+		"dev_life_level 0\nwriteback_quota_used_pages 0\n")
+	miss := app.kernelApiMissing("zram0")
+	if len(miss) == 0 {
+		t.Fatal("expected missing APIs for an outdated stat node")
+	}
+	// A wholly absent node is a node-missing gate, not "too old".
+	empty := app.kernelApiMissing("zram-absent")
+	if empty != nil {
+		t.Fatalf("absent node should yield nil, got %v", empty)
+	}
+}
+
 func TestWriteStepChmodsZramTakeoverNode(t *testing.T) {
 	app := testApp(t)
 	zdir := filepath.Join(app.SysRoot, "block", "zram0")

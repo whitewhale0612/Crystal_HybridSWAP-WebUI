@@ -258,8 +258,10 @@ func (a *App) crystalStatus(device string) CrystalStatus {
 	zdir := a.sys("block/" + device)
 	enableRaw := readTrim(filepath.Join(zdir, "hybridswap_enable"))
 	coreRaw := readTrim(filepath.Join(zdir, "hybridswap_core_enable"))
-	// Live writeback-quota counters live in hybridswap_crystal_stat as page
-	// counts (space-separated "key value"), NOT in hybridswap_report.
+	// Live writeback-quota + physical-writeback counters live in
+	// hybridswap_crystal_stat (space-separated "key value"), NOT in
+	// hybridswap_report. Quota uses the authoritative *_bytes fields (charged
+	// from ZMS physical writes); the UI gate guarantees they exist.
 	stat := parseKeyValue(readTrim(filepath.Join(zdir, "hybridswap_crystal_stat")), " ")
 	devLifeRaw := readTrim(filepath.Join(zdir, "hybridswap_dev_life"))
 	const pageBytes = 4096
@@ -270,9 +272,19 @@ func (a *App) crystalStatus(device string) CrystalStatus {
 		Loglevel:       parseLastIntDefault(readTrim(filepath.Join(zdir, "hybridswap_loglevel")), 0),
 		DevLife:        parseDevLifeLevel(stat, devLifeRaw),
 		QuotaDay:       readIntAny(0, filepath.Join(zdir, "hybridswap_quota_day")),
-		QuotaUsed:      parseIntDefault(stat["writeback_quota_used_pages"], 0) * pageBytes,
-		QuotaRemaining: parseIntDefault(stat["writeback_quota_remaining_pages"], 0) * pageBytes,
+		QuotaUsed:      parseIntDefault(stat["writeback_quota_used_bytes"], 0),
+		QuotaRemaining: parseIntDefault(stat["writeback_quota_remaining_bytes"], 0),
 		ZramIncrease:   readIntAny(0, filepath.Join(zdir, "hybridswap_zram_increase")),
+		FlashIO: FlashIO{
+			WriteBytes:       parseIntDefault(stat["zram_bd_physical_write_bytes"], 0),
+			WritePages:       parseIntDefault(stat["zram_bd_physical_write_pages"], 0),
+			WriteIOs:         parseIntDefault(stat["zram_bd_physical_write_ios_count"], 0),
+			WriteFailedPages: parseIntDefault(stat["zram_bd_physical_write_failed_pages"], 0),
+			ReadBytes:        parseIntDefault(stat["zram_bd_physical_read_pages"], 0) * pageBytes,
+			ReadPages:        parseIntDefault(stat["zram_bd_physical_read_pages"], 0),
+			ReadIOs:          parseIntDefault(stat["zram_bd_physical_read_ios_count"], 0),
+			ReadFailedPages:  parseIntDefault(stat["zram_bd_physical_read_failed_pages"], 0),
+		},
 	}
 	// Prefer the stat node's authoritative limit when present.
 	if lim := parseIntDefault(stat["writeback_quota_limit_bytes"], 0); lim > 0 {

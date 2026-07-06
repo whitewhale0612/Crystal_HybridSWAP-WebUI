@@ -126,15 +126,31 @@ type SwapStatus struct {
 }
 
 type CrystalStatus struct {
-	Enable         int64 `json:"enable"`
-	CoreEnable     int64 `json:"core_enable"`
-	SwapdPause     int64 `json:"swapd_pause"`
-	Loglevel       int64 `json:"loglevel"`
-	DevLife        int64 `json:"dev_life"`
-	QuotaDay       int64 `json:"quota_day"`
-	QuotaUsed      int64 `json:"quota_used"`
-	QuotaRemaining int64 `json:"quota_remaining"`
-	ZramIncrease   int64 `json:"zram_increase"`
+	Enable         int64   `json:"enable"`
+	CoreEnable     int64   `json:"core_enable"`
+	SwapdPause     int64   `json:"swapd_pause"`
+	Loglevel       int64   `json:"loglevel"`
+	DevLife        int64   `json:"dev_life"`
+	QuotaDay       int64   `json:"quota_day"`
+	QuotaUsed      int64   `json:"quota_used"`
+	QuotaRemaining int64   `json:"quota_remaining"`
+	ZramIncrease   int64   `json:"zram_increase"`
+	FlashIO        FlashIO `json:"flash_io"`
+}
+
+// FlashIO reports real backing-device (flash) I/O from ZMS physical-writeback
+// accounting: bytes/pages/IOs actually written to and read from the backing
+// device plus failures. Sourced from hybridswap_crystal_stat zram_bd_physical_*
+// fields, which the UI gate guarantees exist.
+type FlashIO struct {
+	WriteBytes       int64 `json:"write_bytes"`
+	WritePages       int64 `json:"write_pages"`
+	WriteIOs         int64 `json:"write_ios"`
+	WriteFailedPages int64 `json:"write_failed_pages"`
+	ReadBytes        int64 `json:"read_bytes"`
+	ReadPages        int64 `json:"read_pages"`
+	ReadIOs          int64 `json:"read_ios"`
+	ReadFailedPages  int64 `json:"read_failed_pages"`
 }
 
 type ZmsStatus struct {
