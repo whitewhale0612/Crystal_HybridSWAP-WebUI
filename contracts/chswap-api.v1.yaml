@@ -62,6 +62,25 @@ paths:
                 $ref: "#/components/schemas/AppsEnvelope"
         "4XX":
           $ref: "#/components/responses/Failure"
+  /v1/apps/force-swap:
+    post:
+      operationId: forceSwapApp
+      summary: Trigger the kernel's force swapout/swapin for one tracked app (memcg).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForceSwapRequest"
+      responses:
+        "200":
+          description: Force swap trigger result envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForceSwapEnvelope"
+        "4XX":
+          $ref: "#/components/responses/Failure"
   /v1/profile:
     get:
       operationId: getProfile
@@ -218,7 +237,9 @@ components:
           enum:
             - E_INVALID_JSON
             - E_INVALID_PROFILE
+            - E_INVALID_REQUEST
             - E_UNSUPPORTED_FIELD
+            - E_APP_NOT_FOUND
             - E_DEVICE_NOT_FOUND
             - E_BACKING_DEVICE_MISSING
             - E_SWAPOFF_FAILED
@@ -895,7 +916,7 @@ components:
               $ref: "#/components/schemas/AppsResult"
     AppsResult:
       type: object
-      required: [supported, count, apps, labels_pending]
+      required: [supported, count, apps, labels_pending, force_swap_supported]
       properties:
         supported:
           type: boolean
@@ -907,6 +928,12 @@ components:
           type: integer
           minimum: 0
           description: Apps whose display name is not yet resolved; the WebUI polls again to let the backend resolve them incrementally.
+        force_swap_supported:
+          type: boolean
+          description: >-
+            True when the kernel exposes the per-memcg memory.force_swapout /
+            memory.force_swapin trigger nodes, so POST /v1/apps/force-swap is
+            available.
         apps:
           type: array
           items:
@@ -979,3 +1006,84 @@ components:
           description: 4KiB page count.
         swapin_ret:
           type: integer
+    ForceSwapRequest:
+      type: object
+      additionalProperties: false
+      required: [op, name, uid]
+      properties:
+        op:
+          type: string
+          enum: [swapout, swapin]
+          description: >-
+            swapout writes the app's zram-resident pages back to the ZMS
+            backing store; swapin pulls its written-back pages into zram.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 31
+          description: >-
+            Memcg entry name exactly as returned by GET /v1/apps (the kernel
+            truncates names to 31 bytes).
+        uid:
+          type: integer
+          description: >-
+            App uid from the same row, sentinels included; used only to
+            disambiguate when several memcgs share a name.
+    ForceSwapResult:
+      type: object
+      required:
+        - op
+        - name
+        - uid
+        - target
+        - completed
+        - result
+        - ret
+        - pages
+        - bytes
+        - duration_ms
+      properties:
+        op:
+          type: string
+          enum: [swapout, swapin]
+        name:
+          type: string
+        uid:
+          type: integer
+        target:
+          type: string
+          description: Kernel trigger node the request was written to.
+        completed:
+          type: boolean
+          description: >-
+            False when the kernel accepted the trigger but its asynchronous
+            result did not arrive within the wait budget; the operation keeps
+            running in the kernel.
+        result:
+          type: string
+          enum: [ok, pending, nodata, busy, quota, nodev, error]
+          description: >-
+            Classified kernel result — ok = pages processed, pending = still
+            running, nodata = nothing to move, busy = another app's swapin is
+            queued, quota = daily writeback quota exhausted, nodev = no
+            hybridswap device, error = other kernel error (see ret).
+        ret:
+          type: integer
+          description: Raw kernel result — pages processed when positive, negative errno on failure, 0 while pending.
+        pages:
+          type: integer
+          minimum: 0
+          description: 4KiB pages processed; 0 unless result is ok.
+        bytes:
+          type: integer
+          minimum: 0
+        duration_ms:
+          type: integer
+          minimum: 0
+    ForceSwapEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/ForceSwapResult"

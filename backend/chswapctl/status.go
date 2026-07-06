@@ -155,7 +155,10 @@ func (a *App) appsResult() (AppsResult, []Warning) {
 	}
 	apps := parseTotalInfoPerApp(readTrim(path))
 	pending := a.fillAppLabels(apps)
-	return AppsResult{Supported: true, Count: len(apps), Apps: apps, LabelsPending: pending}, nil
+	forceSwap := a.exists(filepath.Join(memcg, "memory.force_swapout")) &&
+		a.exists(filepath.Join(memcg, "memory.force_swapin"))
+	return AppsResult{Supported: true, Count: len(apps), Apps: apps,
+		LabelsPending: pending, ForceSwapSupported: forceSwap}, nil
 }
 
 // parseTotalInfoPerApp parses the whitespace-delimited total_info_per_app table
@@ -264,7 +267,6 @@ func (a *App) crystalStatus(device string) CrystalStatus {
 	// from ZMS physical writes); the UI gate guarantees they exist.
 	stat := parseKeyValue(readTrim(filepath.Join(zdir, "hybridswap_crystal_stat")), " ")
 	devLifeRaw := readTrim(filepath.Join(zdir, "hybridswap_dev_life"))
-	const pageBytes = 4096
 	out := CrystalStatus{
 		Enable:         parseCrystalEnabled(enableRaw, "hybridswap"),
 		CoreEnable:     parseCrystalEnabled(coreRaw, "reclaim_in"),

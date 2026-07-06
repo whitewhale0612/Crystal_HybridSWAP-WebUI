@@ -4,6 +4,7 @@ const (
 	apiSchema  = "chswap.api.v1"
 	apiVersion = "1"
 	moduleID   = "crystal_hybridswap_webui"
+	pageBytes  = 4096
 )
 
 const unsupportedMessage = "kernel does not expose the required Crystal Hybridswap management nodes"
@@ -28,6 +29,9 @@ type App struct {
 	KSUD           string
 	SkipKSUD       bool
 	DeadlineMS     int64
+	// ForceWaitMS bounds how long POST /v1/apps/force-swap waits for the
+	// kernel's asynchronous result; 0 means the default budget.
+	ForceWaitMS int64
 }
 
 type Envelope struct {
@@ -226,6 +230,40 @@ type AppsResult struct {
 	// LabelsPending is how many apps still have no attempted display name; the
 	// WebUI polls again to let the backend resolve them incrementally.
 	LabelsPending int `json:"labels_pending"`
+	// ForceSwapSupported is true when the kernel exposes the per-memcg
+	// memory.force_swapout / memory.force_swapin trigger nodes, so the UI can
+	// offer POST /v1/apps/force-swap actions per app.
+	ForceSwapSupported bool `json:"force_swap_supported"`
+}
+
+// ForceSwapRequest is the POST /v1/apps/force-swap payload: trigger the kernel
+// to force-swap one tracked app (memcg). "swapout" writes all of its
+// zram-resident pages back to the ZMS backing store, "swapin" pulls its
+// written-back pages into zram. Name and UID must come from a row previously
+// returned by GET /v1/apps.
+type ForceSwapRequest struct {
+	Op   string `json:"op"`
+	Name string `json:"name"`
+	UID  int64  `json:"uid"`
+}
+
+// ForceSwapResult reports the trigger outcome. The kernel runs the operation
+// asynchronously: Completed=false (result "pending") means the trigger was
+// accepted but the result did not arrive within the wait budget and the kernel
+// keeps working. Ret is the raw kernel result (>0 pages processed, <0 negative
+// errno); Result classifies it for the UI as ok / pending / nodata / busy /
+// quota / nodev / error.
+type ForceSwapResult struct {
+	Op         string `json:"op"`
+	Name       string `json:"name"`
+	UID        int64  `json:"uid"`
+	Target     string `json:"target"`
+	Completed  bool   `json:"completed"`
+	Result     string `json:"result"`
+	Ret        int64  `json:"ret"`
+	Pages      int64  `json:"pages"`
+	Bytes      int64  `json:"bytes"`
+	DurationMS int64  `json:"duration_ms"`
 }
 
 type StorageStatus struct {

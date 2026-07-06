@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "schema": "chswap.api.v1",
+  "data": {
+    "op": "swapout",
+    "name": "com.tencent.mm",
+    "uid": 10123,
+    "target": "/dev/memcg/apps/uid_10123/memory.force_swapout",
+    "completed": true,
+    "result": "ok",
+    "ret": 18642,
+    "pages": 18642,
+    "bytes": 76357632,
+    "duration_ms": 460
+  },
+  "warnings": []
+}

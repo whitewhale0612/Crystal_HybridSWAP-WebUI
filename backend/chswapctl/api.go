@@ -38,6 +38,8 @@ func (a *App) handleAPI(args []string) bool {
 		}
 		data, warnings := a.appsResult()
 		return a.respondOK(data, warnings...)
+	case method == "POST" && path == "/v1/apps/force-swap":
+		return a.forceSwapAPI(body)
 	case method == "GET" && path == "/v1/profile":
 		if !rejectUnexpectedBody(body) {
 			return false

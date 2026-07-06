@@ -1019,6 +1019,275 @@ func TestDaemonLockExcludesSecondOwner(t *testing.T) {
 	}
 }
 
+// forceSwapTree builds a memcg tree with one tracked app so force-swap tests
+// exercise the real directory-resolution path.
+func forceSwapTree(t *testing.T, app *App, name, uid, lastRetRow string) string {
+	t.Helper()
+	memcg := filepath.Join(app.DevRoot, "memcg")
+	dir := filepath.Join(memcg, "apps", "uid_"+uid)
+	if err := mkdirAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	for node, data := range map[string]string{
+		filepath.Join(memcg, "memory.zram_wm_ratio"): "0\n", // memcgRoot probe
+		filepath.Join(memcg, "memory.force_swapout"): "0\n",
+		filepath.Join(memcg, "memory.force_swapin"):  "0\n",
+		filepath.Join(dir, "memory.name"):            name + "\n",
+		filepath.Join(dir, "memory.app_uid"):         uid + "\n",
+		filepath.Join(dir, "memory.force_swapout"):   "0\n",
+		filepath.Join(dir, "memory.force_swapin"):    "0\n",
+		filepath.Join(dir, "memory.swap_stat"):       lastRetRow,
+	} {
+		if err := writeFile(node, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestForceSwapSwapoutCompletes(t *testing.T) {
+	app := testApp(t)
+	app.ForceWaitMS = 200
+	dir := forceSwapTree(t, app, "com.example.app", "10234",
+		"forceSwapoutWrittenPages:                  42\nforceSwapoutLastRet:                       42\n")
+
+	var env Envelope
+	ok := captureJSON(t, func() bool {
+		return app.handleAPI([]string{"POST", "/v1/apps/force-swap",
+			"--json", `{"op":"swapout","name":"com.example.app","uid":10234}`})
+	}, &env)
+	if !ok || env.Error != nil {
+		t.Fatalf("force swapout failed: env=%+v", env)
+	}
+	data, err := json.Marshal(env.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res ForceSwapResult
+	if err := json.Unmarshal(data, &res); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "memory.force_swapout")
+	if !res.Completed || res.Result != "ok" || res.Ret != 42 ||
+		res.Pages != 42 || res.Bytes != 42*pageBytes || res.Target != target {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	written, err := os.ReadFile(target)
+	if err != nil || strings.TrimSpace(string(written)) != "1" {
+		t.Fatalf("trigger node not written: %q err=%v", written, err)
+	}
+}
+
+func TestForceSwapSwapinPendingWhenNoResult(t *testing.T) {
+	app := testApp(t)
+	app.ForceWaitMS = 1
+	forceSwapTree(t, app, "com.example.app", "10234",
+		"forceSwapinLastRet:                         0\n")
+
+	var env Envelope
+	ok := captureJSON(t, func() bool {
+		return app.handleAPI([]string{"POST", "/v1/apps/force-swap",
+			"--json", `{"op":"swapin","name":"com.example.app","uid":10234}`})
+	}, &env)
+	if !ok || env.Error != nil {
+		t.Fatalf("force swapin failed: env=%+v", env)
+	}
+	var res struct {
+		Completed bool   `json:"completed"`
+		Result    string `json:"result"`
+		Pages     int64  `json:"pages"`
+	}
+	data, _ := json.Marshal(env.Data)
+	if err := json.Unmarshal(data, &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Completed || res.Result != "pending" || res.Pages != 0 {
+		t.Fatalf("expected pending result: %+v", res)
+	}
+}
+
+func TestForceSwapDisambiguatesByUID(t *testing.T) {
+	app := testApp(t)
+	app.ForceWaitMS = 1
+	forceSwapTree(t, app, "com.example.app", "10111",
+		"forceSwapoutLastRet:                        0\n")
+	other := forceSwapTree(t, app, "com.example.app", "10222",
+		"forceSwapoutLastRet:                        0\n")
+
+	var env Envelope
+	ok := captureJSON(t, func() bool {
+		return app.handleAPI([]string{"POST", "/v1/apps/force-swap",
+			"--json", `{"op":"swapout","name":"com.example.app","uid":10222}`})
+	}, &env)
+	if !ok || env.Error != nil {
+		t.Fatalf("force swapout failed: env=%+v", env)
+	}
+	written, err := os.ReadFile(filepath.Join(other, "memory.force_swapout"))
+	if err != nil || strings.TrimSpace(string(written)) != "1" {
+		t.Fatalf("uid-matched memcg not triggered: %q err=%v", written, err)
+	}
+}
+
+func TestForceSwapMultiMatchPrefersDriftedUIDOverForeignClone(t *testing.T) {
+	// Dual-app clones share memory.name. When no candidate reports the exact
+	// requested uid, a dir whose app_uid drifted to -1 (app exited) is the
+	// intended target; a dir affirmatively reporting a DIFFERENT real uid is
+	// another app's clone and must not be triggered in its place.
+	app := testApp(t)
+	app.ForceWaitMS = 1
+	clone := forceSwapTree(t, app, "com.example.app", "1010234",
+		"forceSwapoutLastRet:                        0\n")
+	drifted := forceSwapTree(t, app, "com.example.app", "10234",
+		"forceSwapoutLastRet:                        0\n")
+	if err := writeFile(filepath.Join(drifted, "memory.app_uid"), "-1\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	var env Envelope
+	ok := captureJSON(t, func() bool {
+		return app.handleAPI([]string{"POST", "/v1/apps/force-swap",
+			"--json", `{"op":"swapout","name":"com.example.app","uid":10234}`})
+	}, &env)
+	if !ok || env.Error != nil {
+		t.Fatalf("force swapout failed: env=%+v", env)
+	}
+	if got, _ := os.ReadFile(filepath.Join(drifted, "memory.force_swapout")); strings.TrimSpace(string(got)) != "1" {
+		t.Fatalf("drifted-uid memcg was not triggered: %q", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(clone, "memory.force_swapout")); strings.TrimSpace(string(got)) == "1" {
+		t.Fatal("foreign clone memcg was wrongly triggered")
+	}
+}
+
+func TestForceSwapMultiMatchAllForeignClonesNotFound(t *testing.T) {
+	app := testApp(t)
+	forceSwapTree(t, app, "com.example.app", "1010234",
+		"forceSwapoutLastRet:                        0\n")
+	other := forceSwapTree(t, app, "com.example.app", "1020234",
+		"forceSwapoutLastRet:                        0\n")
+	_ = other
+
+	var env Envelope
+	ok := captureJSON(t, func() bool {
+		return app.handleAPI([]string{"POST", "/v1/apps/force-swap",
+			"--json", `{"op":"swapout","name":"com.example.app","uid":10234}`})
+	}, &env)
+	if ok || env.Error == nil || env.Error.Code != "E_APP_NOT_FOUND" {
+		t.Fatalf("all-foreign multi-match was not rejected: ok=%v env=%+v", ok, env)
+	}
+}
+
+func TestForceSwapAppNotFound(t *testing.T) {
+	app := testApp(t)
+	forceSwapTree(t, app, "com.example.app", "10234", "forceSwapoutLastRet: 0\n")
+
+	var env Envelope
+	ok := captureJSON(t, func() bool {
+		return app.handleAPI([]string{"POST", "/v1/apps/force-swap",
+			"--json", `{"op":"swapout","name":"com.gone.app","uid":10999}`})
+	}, &env)
+	if ok || env.Error == nil || env.Error.Code != "E_APP_NOT_FOUND" {
+		t.Fatalf("missing app was not rejected: ok=%v env=%+v", ok, env)
+	}
+}
+
+func TestForceSwapUnsupportedKernel(t *testing.T) {
+	app := testApp(t)
+	memcg := filepath.Join(app.DevRoot, "memcg")
+	if err := mkdirAll(memcg); err != nil {
+		t.Fatal(err)
+	}
+	// Management root exists but the kernel lacks the force trigger nodes.
+	if err := writeFile(filepath.Join(memcg, "memory.zram_wm_ratio"), "0\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	var env Envelope
+	ok := captureJSON(t, func() bool {
+		return app.handleAPI([]string{"POST", "/v1/apps/force-swap",
+			"--json", `{"op":"swapout","name":"com.example.app","uid":10234}`})
+	}, &env)
+	if ok || env.Error == nil || env.Error.Code != "E_KERNEL_NODE_MISSING" {
+		t.Fatalf("unsupported kernel was not gated: ok=%v env=%+v", ok, env)
+	}
+}
+
+func TestForceSwapRejectsInvalidRequests(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		code string
+	}{
+		"bad op":        {`{"op":"drop","name":"com.example.app","uid":1}`, "E_INVALID_REQUEST"},
+		"empty name":    {`{"op":"swapout","name":"","uid":1}`, "E_INVALID_REQUEST"},
+		"slash in name": {`{"op":"swapout","name":"../root","uid":1}`, "E_INVALID_REQUEST"},
+		"name too long": {`{"op":"swapout","name":"` + strings.Repeat("a", 32) + `","uid":1}`, "E_INVALID_REQUEST"},
+		"unknown field": {`{"op":"swapout","name":"a","uid":1,"extra":true}`, "E_INVALID_JSON"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			app := testApp(t)
+			var env Envelope
+			ok := captureJSON(t, func() bool {
+				return app.forceSwapAPI([]byte(tc.body))
+			}, &env)
+			if ok || env.Error == nil || env.Error.Code != tc.code {
+				t.Fatalf("bad request was not rejected with %s: ok=%v env=%+v", tc.code, ok, env)
+			}
+		})
+	}
+}
+
+func TestForceSwapResultKindClassifiesErrno(t *testing.T) {
+	cases := map[string]struct {
+		ret       int64
+		completed bool
+		want      string
+	}{
+		"pages":   {42, true, "ok"},
+		"pending": {0, false, "pending"},
+		"nodata":  {-61, true, "nodata"},
+		"busy":    {-16, true, "busy"},
+		"quota":   {-122, true, "quota"},
+		"nodev":   {-19, true, "nodev"},
+		"other":   {-12, true, "error"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := forceSwapResultKind(tc.ret, tc.completed); got != tc.want {
+				t.Fatalf("forceSwapResultKind(%d, %v) = %q, want %q",
+					tc.ret, tc.completed, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAppsResultReportsForceSwapSupport(t *testing.T) {
+	app := testApp(t)
+	memcg := filepath.Join(app.DevRoot, "memcg")
+	if err := mkdirAll(memcg); err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range []string{"memory.zram_wm_ratio", "memory.total_info_per_app"} {
+		if err := writeFile(filepath.Join(memcg, node), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, _ := app.appsResult()
+	if !res.Supported || res.ForceSwapSupported {
+		t.Fatalf("force swap should be unsupported without trigger nodes: %+v", res)
+	}
+
+	for _, node := range []string{"memory.force_swapout", "memory.force_swapin"} {
+		if err := writeFile(filepath.Join(memcg, node), "0\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, _ = app.appsResult()
+	if !res.ForceSwapSupported {
+		t.Fatalf("force swap should be supported with trigger nodes: %+v", res)
+	}
+}
+
 func testApp(t *testing.T) *App {
 	t.Helper()
 	root := t.TempDir()

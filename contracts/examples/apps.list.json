@@ -5,6 +5,7 @@
     "supported": true,
     "count": 6,
     "labels_pending": 0,
+    "force_swap_supported": true,
     "apps": [
       {
         "name": "tv.danmaku.bili",

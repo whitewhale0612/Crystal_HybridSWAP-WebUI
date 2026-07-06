@@ -55,6 +55,7 @@ func newApp() (*App, error) {
 		DiagnosticsDir: filepath.Join(dataDir, "diagnostics"),
 		KSUD:           os.Getenv("CHSWAP_KSUD"),
 		SkipKSUD:       os.Getenv("CHSWAP_SKIP_KSUD") == "1",
+		ForceWaitMS:    parseIntDefault(os.Getenv("CHSWAP_FORCE_WAIT_MS"), 0),
 	}
 	if app.KSUD == "" {
 		if _, err := os.Stat("/data/adb/ksud"); err == nil {

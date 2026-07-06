@@ -578,7 +578,8 @@ func isZramWriteNode(base string) bool {
 func isMemcgWriteNode(base string) bool {
 	switch base {
 	case "memory.zram_wm_ratio", "memory.avail_buffers",
-		"memory.erm_avail_buffer_enable":
+		"memory.erm_avail_buffer_enable",
+		"memory.force_swapout", "memory.force_swapin":
 		return true
 	default:
 		return false

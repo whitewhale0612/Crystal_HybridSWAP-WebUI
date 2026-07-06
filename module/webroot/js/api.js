@@ -185,6 +185,15 @@ async function mockApi(method, path, body) {
   if (key === "PUT /v1/profile") return ok(body, []);
   if (key === "POST /v1/apply" || key === "POST /v1/boot/apply")
     return fetchMock("apply.runtime");
+  if (key === "POST /v1/apps/force-swap") {
+    const env = await fetchMock("apps.force-swap");
+    if (env && env.data && body && body.op) {
+      env.data.op = body.op;
+      env.data.name = body.name || env.data.name;
+      env.data.uid = body.uid ?? env.data.uid;
+    }
+    return env;
+  }
   return { ok: false, schema: "chswap.api.v1", error: { code: "E_INTERNAL", message: `unmocked ${key}` }, warnings: [] };
 }
 
@@ -206,6 +215,7 @@ export const api = {
   getCapabilities: () => call("GET", "/v1/capabilities"),
   getStatus: () => call("GET", "/v1/status"),
   getApps: () => call("GET", "/v1/apps"),
+  forceSwapApp: (req) => call("POST", "/v1/apps/force-swap", req),
   getProfile: () => call("GET", "/v1/profile"),
   getBootStatus: () => call("GET", "/v1/boot/status"),
 

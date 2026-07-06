@@ -40,6 +40,8 @@ const D = {
   snowflakeSmall: html`<path d="M12 4v16M6 7l12 10M18 7L6 17" />`,
   cpu: html`<rect x="6" y="6" width="12" height="12" rx="2" /><rect x="9.5" y="9.5" width="5" height="5" rx="1" /><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" />`,
   hourglass: html`<path d="M6 3h12M6 21h12M8 3c0 4 8 5 8 9s-8 5 -8 9M16 3c0 4 -8 5 -8 9s8 5 8 9" />`,
+  swapout: html`<path d="M12 3v13M7 11l5 5 5 -5" /><path d="M5 21h14" />`,
+  swapin: html`<path d="M12 17V4M7 9l5 -5 5 5" /><path d="M5 21h14" />`,
 };
 
 export function Icon({ name, size = 20, cls = "", stroke = 2 }) {

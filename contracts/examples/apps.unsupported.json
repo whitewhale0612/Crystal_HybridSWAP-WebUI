@@ -4,6 +4,8 @@
   "data": {
     "supported": false,
     "count": 0,
+    "labels_pending": 0,
+    "force_swap_supported": false,
     "apps": []
   },
   "warnings": []
