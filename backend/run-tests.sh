@@ -34,8 +34,18 @@ EOF
   printf 'Crystal Hybridswap stage-3\n' > "$root/sys/block/zram0/hybridswap_report"
   cat > "$root/sys/block/zram0/hybridswap_crystal_stat" <<'EOF'
 dev_life_level 0
+writeback_quota_limit_bytes 2147483648
+writeback_quota_used_bytes 0
+writeback_quota_remaining_bytes 2147483648
 writeback_quota_used_pages 0
 writeback_quota_remaining_pages 0
+zram_bd_physical_write_pages 0
+zram_bd_physical_write_bytes 0
+zram_bd_physical_write_ios_count 0
+zram_bd_physical_write_failed_pages 0
+zram_bd_physical_read_pages 0
+zram_bd_physical_read_ios_count 0
+zram_bd_physical_read_failed_pages 0
 EOF
   printf '145540224 146486320 173502464 0 0 0 0 0 0\n' \
     > "$root/sys/block/zram0/mm_stat"
