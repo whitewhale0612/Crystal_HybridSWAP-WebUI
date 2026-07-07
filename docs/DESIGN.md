@@ -151,6 +151,7 @@ Read-only/status endpoints:
 ```sh
 chswapctl api GET /v1/capabilities
 chswapctl api GET /v1/status
+chswapctl api GET /v1/apps
 chswapctl api GET /v1/profile
 chswapctl api GET /v1/boot/status
 ```
@@ -168,6 +169,12 @@ Profile save and apply endpoints:
 chswapctl api PUT /v1/profile --json '<profile-json>'
 chswapctl api POST /v1/apply --json '{"mode":"full-control"}'
 chswapctl api POST /v1/boot/apply --json '{"phase":"service"}'
+```
+
+App action endpoints:
+
+```sh
+chswapctl api POST /v1/apps/force-swap --json '{"op":"swapout","name":"<memcg>","uid":12345}'
 ```
 
 `/v1/apply` accepts `dry-run`, `runtime`, `full-control`, and `reconcile`.

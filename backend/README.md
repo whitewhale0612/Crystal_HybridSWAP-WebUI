@@ -28,12 +28,12 @@ Runtime:
 
 Management-surface gate:
 
-- `GET /v1/capabilities`, `GET /v1/status`, `GET /v1/profile`,
-  `POST /v1/profile/validate`, `GET /v1/boot/status`,
+- `GET /v1/capabilities`, `GET /v1/status`, `GET /v1/apps`,
+  `GET /v1/profile`, `POST /v1/profile/validate`, `GET /v1/boot/status`,
   and `POST /v1/diagnostics/export` may run read-only when required stage-3
   Crystal Hybridswap nodes are missing;
-- profile save, apply, and boot apply return `E_KERNEL_NODE_MISSING`
-  when the current profile requires nodes that are absent;
+- profile save, apply, boot apply, and per-app force-swap return
+  `E_KERNEL_NODE_MISSING` when their required kernel nodes are absent;
 - frontend must stop at the management-unavailable view when
   `frontend_gate.allowed=false`.
 
