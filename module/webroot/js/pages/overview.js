@@ -2,9 +2,9 @@
 
 import { html } from "../../vendor/preact.mjs";
 import { useStore, refreshStatus } from "../store.js";
-import { Card, Stat, Ring, Meter, Banner, KV, Chip, Button, Skeleton } from "../components/ui.js";
+import { Card, Stat, Ring, Meter, Banner, KV, Chip, Button, Skeleton, IOSummary } from "../components/ui.js";
 import { ModeChip, OnOffChip } from "../components/badges.js";
-import { fmtBytes, fmtPct, fmtInt, pct, onOff, fmtQuota } from "../format.js";
+import { fmtBytes, fmtPct, fmtInt, pct, fmtQuota } from "../format.js";
 
 function LoadingCards() {
   return html`<div class="grid">
@@ -27,8 +27,9 @@ export function Overview() {
   const sw = status.swap || {};
   const zms = status.zms || {};
   const c = status.crystal || {};
-  const fio = c.flash_io || {};
-  const flashFailed = (fio.write_failed_pages || 0) + (fio.read_failed_pages || 0);
+  const bd = c.bd_stat_io || {};
+  const zmsPhysical = zms.physical_io || {};
+  const zmsPhysicalFailed = (zmsPhysical.write_failed_pages || 0) + (zmsPhysical.read_failed_pages || 0);
   const mm = z.mm_stat || {};
 
   const swapRatio = pct(sw.used_bytes, sw.size_bytes);
@@ -42,6 +43,17 @@ export function Overview() {
   const slotOverhead = zms.slot_overhead_bytes;
   const slotOverheadPct = zms.slot_overhead_pct;
   const signedBytes = (v) => (v > 0 ? `+${fmtBytes(v)}` : fmtBytes(v));
+  const bdMeta = bd.present
+    ? html`<span>当前已回写 ${fmtBytes(bd.current_bytes)}</span><br />
+        <span>仅统计实际换出/读回，不含存储整理</span>`
+    : "暂无回写路径统计";
+  const zmsPhysicalMeta = zmsPhysical.present
+    ? html`<span>写 I/O ${fmtInt(zmsPhysical.write_ios)} 次 · 读 ${fmtInt(zmsPhysical.read_ios)} 次 ·
+        ${zmsPhysicalFailed > 0
+          ? html`<span style="color:var(--danger)">失败 ${fmtInt(zmsPhysicalFailed)} 页</span>`
+          : "失败 0 页"}</span><br />
+        <span>包含存储整理产生的额外读写</span>`
+    : "暂无全量物理 I/O 统计";
   // ZMS stats are only meaningful when the subsystem is enabled and its stat
   // node was read. Otherwise the zeros are "no data", not a real 0.
   const zmsLive = zms.enabled === 1 && zms.present !== false;
@@ -131,6 +143,17 @@ export function Overview() {
                   tone: blockRatio > 90 ? "warn" : "accent",
                 })}
               </div>
+              <div class="divider"></div>
+              ${IOSummary({
+                writeLabel: "全量物理写入",
+                readLabel: "全量物理读回",
+                writeBytes: zmsPhysical.write_bytes,
+                writeCount: zmsPhysical.write_pages,
+                readBytes: zmsPhysical.read_bytes,
+                readCount: zmsPhysical.read_pages,
+                countUnit: "页",
+                meta: zmsPhysicalMeta,
+              })}
             </div>`}
       <//>
 
@@ -152,16 +175,16 @@ export function Overview() {
           ${KV({ k: "剩余", children: fmtBytes(c.quota_remaining) })}
           ${KV({ k: "ZRAM 压力增量", children: c.zram_increase == null ? "—" : `${c.zram_increase} MiB` })}
           <div class="divider"></div>
-          <div class="row" style="gap:14px;align-items:flex-start">
-            ${Stat({ label: "写入闪存", value: fmtBytes(fio.write_bytes), sub: `${fmtInt(fio.write_pages)} 页` })}
-            ${Stat({ label: "从闪存读回", value: fmtBytes(fio.read_bytes), sub: `${fmtInt(fio.read_pages)} 页` })}
-          </div>
-          <div class="muted" style="font-size:var(--fs-xs)">
-            写 I/O ${fmtInt(fio.write_ios)} 次 · 读 ${fmtInt(fio.read_ios)} 次 ·
-            ${flashFailed > 0
-              ? html`<span style="color:var(--danger)">失败 ${fmtInt(flashFailed)} 页</span>`
-              : "失败 0"}
-          </div>
+          ${IOSummary({
+            writeLabel: "数据路径写入",
+            readLabel: "数据路径读回",
+            writeBytes: bd.write_bytes,
+            writeCount: bd.write_blocks,
+            readBytes: bd.read_bytes,
+            readCount: bd.read_blocks,
+            countUnit: "4K 块",
+            meta: bdMeta,
+          })}
         </div>
       <//>
 

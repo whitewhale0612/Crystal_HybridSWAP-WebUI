@@ -130,23 +130,52 @@ type SwapStatus struct {
 }
 
 type CrystalStatus struct {
-	Enable         int64   `json:"enable"`
-	CoreEnable     int64   `json:"core_enable"`
-	SwapdPause     int64   `json:"swapd_pause"`
-	Loglevel       int64   `json:"loglevel"`
-	DevLife        int64   `json:"dev_life"`
-	QuotaDay       int64   `json:"quota_day"`
-	QuotaUsed      int64   `json:"quota_used"`
-	QuotaRemaining int64   `json:"quota_remaining"`
-	ZramIncrease   int64   `json:"zram_increase"`
-	FlashIO        FlashIO `json:"flash_io"`
+	Enable         int64    `json:"enable"`
+	CoreEnable     int64    `json:"core_enable"`
+	SwapdPause     int64    `json:"swapd_pause"`
+	Loglevel       int64    `json:"loglevel"`
+	DevLife        int64    `json:"dev_life"`
+	QuotaDay       int64    `json:"quota_day"`
+	QuotaUsed      int64    `json:"quota_used"`
+	QuotaRemaining int64    `json:"quota_remaining"`
+	ZramIncrease   int64    `json:"zram_increase"`
+	FlashIO        FlashIO  `json:"flash_io"`
+	BdStatIO       BdStatIO `json:"bd_stat_io"`
 }
 
-// FlashIO reports real backing-device (flash) I/O from ZMS physical-writeback
-// accounting: bytes/pages/IOs actually written to and read from the backing
-// device plus failures. Sourced from hybridswap_crystal_stat zram_bd_physical_*
-// fields, which the UI gate guarantees exist.
+// FlashIO is the legacy API view of full ZMS physical backing-device I/O from
+// hybridswap_crystal_stat zram_bd_physical_* fields. New UI surfaces use
+// CrystalStatus.BdStatIO for data-path bd_stat and ZmsStatus.PhysicalIO for
+// full ZMS physical I/O.
 type FlashIO struct {
+	WriteBytes       int64 `json:"write_bytes"`
+	WritePages       int64 `json:"write_pages"`
+	WriteIOs         int64 `json:"write_ios"`
+	WriteFailedPages int64 `json:"write_failed_pages"`
+	ReadBytes        int64 `json:"read_bytes"`
+	ReadPages        int64 `json:"read_pages"`
+	ReadIOs          int64 `json:"read_ios"`
+	ReadFailedPages  int64 `json:"read_failed_pages"`
+}
+
+// BdStatIO mirrors /sys/block/zramX/bd_stat under Crystal. The kernel reports
+// three physical 4K-block counters: current written-back blocks, cumulative
+// data-path readback blocks, and cumulative data-path writeback blocks. ZMS
+// internal maintenance I/O is intentionally excluded.
+type BdStatIO struct {
+	Present       bool  `json:"present"`
+	CurrentBlocks int64 `json:"current_blocks"`
+	CurrentBytes  int64 `json:"current_bytes"`
+	ReadBlocks    int64 `json:"read_blocks"`
+	ReadBytes     int64 `json:"read_bytes"`
+	WriteBlocks   int64 `json:"write_blocks"`
+	WriteBytes    int64 `json:"write_bytes"`
+}
+
+// PhysicalIO reports full ZMS physical backing-device I/O, including internal
+// maintenance such as compaction. It is sourced from zms_stat physical_* fields.
+type PhysicalIO struct {
+	Present          bool  `json:"present"`
 	WriteBytes       int64 `json:"write_bytes"`
 	WritePages       int64 `json:"write_pages"`
 	WriteIOs         int64 `json:"write_ios"`
@@ -165,22 +194,23 @@ type ZmsStatus struct {
 	Present bool `json:"present"`
 	// Stat counters: emitted even when zero so the UI can distinguish a real
 	// "0 blocks used" from "no data" (which shows as present=false).
-	NrBlocks             int64   `json:"nr_blocks"`
-	UsedBlocks           int64   `json:"used_blocks"`
-	Objects              int64   `json:"objects"`
-	OriginalBytes        int64   `json:"original_bytes"`
-	StoredBytes          int64   `json:"stored_bytes"`
-	PackedBytes          int64   `json:"packed_bytes"`
-	SlotOverheadBytes    int64   `json:"slot_overhead_bytes"`
-	SlotOverheadPct      float64 `json:"slot_overhead_pct"`
-	BlockBytes           int64   `json:"block_bytes"`
-	BlockWasteBytes      int64   `json:"block_waste_bytes"`
-	BlockUtilizationPct  float64 `json:"block_utilization_pct"`
-	BackingSavingsBytes  int64   `json:"backing_savings_bytes"`
-	BackingSavingsPct    float64 `json:"backing_savings_pct"`
-	SpaceDeltaBytes      int64   `json:"space_delta_bytes"`
-	SpaceSavedPct        float64 `json:"space_saved_pct"`
-	PackingEfficiencyPct float64 `json:"packing_efficiency_pct"`
+	NrBlocks             int64      `json:"nr_blocks"`
+	UsedBlocks           int64      `json:"used_blocks"`
+	Objects              int64      `json:"objects"`
+	OriginalBytes        int64      `json:"original_bytes"`
+	StoredBytes          int64      `json:"stored_bytes"`
+	PackedBytes          int64      `json:"packed_bytes"`
+	SlotOverheadBytes    int64      `json:"slot_overhead_bytes"`
+	SlotOverheadPct      float64    `json:"slot_overhead_pct"`
+	BlockBytes           int64      `json:"block_bytes"`
+	BlockWasteBytes      int64      `json:"block_waste_bytes"`
+	BlockUtilizationPct  float64    `json:"block_utilization_pct"`
+	BackingSavingsBytes  int64      `json:"backing_savings_bytes"`
+	BackingSavingsPct    float64    `json:"backing_savings_pct"`
+	SpaceDeltaBytes      int64      `json:"space_delta_bytes"`
+	SpaceSavedPct        float64    `json:"space_saved_pct"`
+	PackingEfficiencyPct float64    `json:"packing_efficiency_pct"`
+	PhysicalIO           PhysicalIO `json:"physical_io"`
 }
 
 type PolicyStatus struct {

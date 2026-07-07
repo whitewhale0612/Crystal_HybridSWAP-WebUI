@@ -47,11 +47,16 @@ zram_bd_physical_read_pages 0
 zram_bd_physical_read_ios_count 0
 zram_bd_physical_read_failed_pages 0
 EOF
+  printf '128 16 64\n' > "$root/sys/block/zram0/bd_stat"
   printf '145540224 146486320 173502464 0 0 0 0 0 0\n' \
     > "$root/sys/block/zram0/mm_stat"
   printf 'enabled: 1\nused_blocks: 42359\nstored_bytes: 145540224\n' \
     > "$root/sys/block/zram0/zms_stat"
   printf 'packed_bytes: 146486320\n' >> "$root/sys/block/zram0/zms_stat"
+  printf 'physical_read_pages: 0\nphysical_read_ios: 0\n' >> "$root/sys/block/zram0/zms_stat"
+  printf 'physical_read_failed_pages: 0\nphysical_write_pages: 0\n' >> "$root/sys/block/zram0/zms_stat"
+  printf 'physical_write_bytes: 0\nphysical_write_ios: 0\n' >> "$root/sys/block/zram0/zms_stat"
+  printf 'physical_write_failed_pages: 0\n' >> "$root/sys/block/zram0/zms_stat"
   for node in \
     hybridswap_enable hybridswap_core_enable hybridswap_swapd_pause \
     hybridswap_loglevel hybridswap_dev_life hybridswap_quota_day \

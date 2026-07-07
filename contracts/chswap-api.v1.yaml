@@ -457,6 +457,7 @@ components:
         - quota_remaining
         - zram_increase
         - flash_io
+        - bd_stat_io
       properties:
         enable:
           type: integer
@@ -488,8 +489,10 @@ components:
         flash_io:
           type: object
           description: >-
-            Real backing-device (flash) I/O from ZMS physical-writeback
-            accounting: bytes/pages/IOs written and read, plus failures.
+            Legacy full ZMS physical backing-device I/O view sourced from
+            hybridswap_crystal_stat zram_bd_physical_* fields. New WebUI
+            surfaces use bd_stat_io for data-path bd_stat and zms.physical_io
+            for full ZMS physical I/O.
           required:
             - write_bytes
             - write_pages
@@ -508,7 +511,29 @@ components:
             read_pages: { type: integer, minimum: 0 }
             read_ios: { type: integer, minimum: 0 }
             read_failed_pages: { type: integer, minimum: 0 }
-          description: ZRAM pressure increase in MiB-sized units.
+        bd_stat_io:
+          type: object
+          description: >-
+            Standard bd_stat data-path I/O counters in physical 4K-block units:
+            current written-back blocks, cumulative readback blocks, and
+            cumulative writeback blocks. ZMS internal maintenance I/O is
+            intentionally excluded.
+          required:
+            - present
+            - current_blocks
+            - current_bytes
+            - read_blocks
+            - read_bytes
+            - write_blocks
+            - write_bytes
+          properties:
+            present: { type: boolean }
+            current_blocks: { type: integer, minimum: 0 }
+            current_bytes: { type: integer, minimum: 0 }
+            read_blocks: { type: integer, minimum: 0 }
+            read_bytes: { type: integer, minimum: 0 }
+            write_blocks: { type: integer, minimum: 0 }
+            write_bytes: { type: integer, minimum: 0 }
     ZmsStatus:
       type: object
       required:
@@ -530,6 +555,7 @@ components:
         - space_delta_bytes
         - space_saved_pct
         - packing_efficiency_pct
+        - physical_io
       properties:
         enabled:
           type: integer
@@ -589,6 +615,31 @@ components:
         packing_efficiency_pct:
           type: number
           description: Legacy alias for block_utilization_pct.
+        physical_io:
+          type: object
+          description: >-
+            Full ZMS physical backing-device I/O from zms_stat physical_* fields,
+            including internal ZMS maintenance such as compaction.
+          required:
+            - present
+            - write_bytes
+            - write_pages
+            - write_ios
+            - write_failed_pages
+            - read_bytes
+            - read_pages
+            - read_ios
+            - read_failed_pages
+          properties:
+            present: { type: boolean }
+            write_bytes: { type: integer, minimum: 0 }
+            write_pages: { type: integer, minimum: 0 }
+            write_ios: { type: integer, minimum: 0 }
+            write_failed_pages: { type: integer, minimum: 0 }
+            read_bytes: { type: integer, minimum: 0 }
+            read_pages: { type: integer, minimum: 0 }
+            read_ios: { type: integer, minimum: 0 }
+            read_failed_pages: { type: integer, minimum: 0 }
     PolicyStatus:
       type: object
       required:

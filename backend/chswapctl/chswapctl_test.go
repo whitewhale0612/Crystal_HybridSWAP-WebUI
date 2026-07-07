@@ -397,7 +397,14 @@ func TestZmsMath(t *testing.T) {
 	}
 	data := "enabled: 1\nused_blocks: 42359\nobjects: 126976\n" +
 		"stored_bytes: 145540224\n" +
-		"packed_bytes: 146486320\n"
+		"packed_bytes: 146486320\n" +
+		"physical_read_pages: 128\n" +
+		"physical_read_ios: 6\n" +
+		"physical_read_failed_pages: 1\n" +
+		"physical_write_pages: 384\n" +
+		"physical_write_bytes: 1572864\n" +
+		"physical_write_ios: 12\n" +
+		"physical_write_failed_pages: 2\n"
 	if err := writeFile(path+"/block/zram0/zms_stat", data); err != nil {
 		t.Fatal(err)
 	}
@@ -425,6 +432,17 @@ func TestZmsMath(t *testing.T) {
 	}
 	if got.BackingSavingsBytes != 346591232 || got.BackingSavingsPct != 66.64 {
 		t.Fatalf("backing savings = %d / %v", got.BackingSavingsBytes, got.BackingSavingsPct)
+	}
+	if !got.PhysicalIO.Present {
+		t.Fatalf("physical_io present = false, want true")
+	}
+	if got.PhysicalIO.WriteBytes != 1572864 || got.PhysicalIO.WritePages != 384 ||
+		got.PhysicalIO.WriteIOs != 12 || got.PhysicalIO.WriteFailedPages != 2 {
+		t.Fatalf("physical write I/O = %+v", got.PhysicalIO)
+	}
+	if got.PhysicalIO.ReadBytes != 128*4096 || got.PhysicalIO.ReadPages != 128 ||
+		got.PhysicalIO.ReadIOs != 6 || got.PhysicalIO.ReadFailedPages != 1 {
+		t.Fatalf("physical read I/O = %+v", got.PhysicalIO)
 	}
 }
 
@@ -529,6 +547,7 @@ func TestCrystalStatusFlashIOAndByteQuota(t *testing.T) {
 			"zram_bd_physical_read_pages 128\n"+
 			"zram_bd_physical_read_ios_count 6\n"+
 			"zram_bd_physical_read_failed_pages 0\n")
+	writeFile(filepath.Join(zdir, "bd_stat"), "64 32 96\n")
 
 	got := app.crystalStatus("zram0")
 	if got.QuotaUsed != 2097152 || got.QuotaRemaining != 4194304 {
@@ -540,6 +559,15 @@ func TestCrystalStatusFlashIOAndByteQuota(t *testing.T) {
 	}
 	if f.ReadPages != 128 || f.ReadBytes != 128*4096 || f.ReadIOs != 6 || f.ReadFailedPages != 0 {
 		t.Fatalf("flash read = %+v", f)
+	}
+	bd := got.BdStatIO
+	if !bd.Present {
+		t.Fatalf("bd_stat_io present = false, want true")
+	}
+	if bd.CurrentBlocks != 64 || bd.CurrentBytes != 64*4096 ||
+		bd.ReadBlocks != 32 || bd.ReadBytes != 32*4096 ||
+		bd.WriteBlocks != 96 || bd.WriteBytes != 96*4096 {
+		t.Fatalf("bd_stat_io = %+v", bd)
 	}
 }
 

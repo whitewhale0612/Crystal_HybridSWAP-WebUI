@@ -42,7 +42,26 @@
       "quota_day": 10737418240,
       "quota_used": 0,
       "quota_remaining": 10737418240,
-      "zram_increase": 75
+      "zram_increase": 75,
+      "flash_io": {
+        "write_bytes": 0,
+        "write_pages": 0,
+        "write_ios": 0,
+        "write_failed_pages": 0,
+        "read_bytes": 0,
+        "read_pages": 0,
+        "read_ios": 0,
+        "read_failed_pages": 0
+      },
+      "bd_stat_io": {
+        "present": false,
+        "current_blocks": 0,
+        "current_bytes": 0,
+        "read_blocks": 0,
+        "read_bytes": 0,
+        "write_blocks": 0,
+        "write_bytes": 0
+      }
     },
     "zms": {
       "enabled": 0,
@@ -62,7 +81,18 @@
       "backing_savings_pct": 0,
       "space_delta_bytes": 0,
       "space_saved_pct": 0,
-      "packing_efficiency_pct": 0
+      "packing_efficiency_pct": 0,
+      "physical_io": {
+        "present": false,
+        "write_bytes": 0,
+        "write_pages": 0,
+        "write_ios": 0,
+        "write_failed_pages": 0,
+        "read_bytes": 0,
+        "read_pages": 0,
+        "read_ios": 0,
+        "read_failed_pages": 0
+      }
     },
     "policy": {
       "zram_wm_ratio": 75,

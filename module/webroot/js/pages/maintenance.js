@@ -6,7 +6,7 @@
 import { html, useState } from "../../vendor/preact.mjs";
 import { useStore, setDraftPath, refreshBoot, toast, toastError } from "../store.js";
 import { api } from "../api.js";
-import { Card, ToggleRow, Banner, KV, Button, Chip, Expand } from "../components/ui.js";
+import { Card, ToggleRow, Banner, KV, Button, Chip, Expand, IOSummary } from "../components/ui.js";
 import { SaveBar, ApplyResult } from "../components/savebar.js";
 import { BootChip } from "../components/badges.js";
 import { fmtDurationMs, fmtTimeMs, fmtBytes, fmtInt } from "../format.js";
@@ -26,9 +26,24 @@ export function Maintenance() {
   if (!draft) return null;
   const diagnostic = draft.mode === "diagnostic";
   const z = (status && status.zram) || {};
+  const c = (status && status.crystal) || {};
+  const zms = (status && status.zms) || {};
   const k = (caps && caps.kernel) || {};
   const st = (status && status.storage) || {};
-  const fio = (status && status.crystal && status.crystal.flash_io) || {};
+  const bd = c.bd_stat_io || {};
+  const zmsPhysical = zms.physical_io || {};
+  const zmsPhysicalFailed = (zmsPhysical.write_failed_pages || 0) + (zmsPhysical.read_failed_pages || 0);
+  const bdMeta = bd.present
+    ? html`<span>当前已回写 ${fmtBytes(bd.current_bytes)}</span><br />
+        <span>仅统计实际换出/读回，不含存储整理</span>`
+    : "暂无回写路径统计";
+  const zmsPhysicalMeta = zmsPhysical.present
+    ? html`<span>写 I/O ${fmtInt(zmsPhysical.write_ios)} 次 · 读 ${fmtInt(zmsPhysical.read_ios)} 次 ·
+        ${zmsPhysicalFailed > 0
+          ? html`<span style="color:var(--danger)">${fmtInt(zmsPhysicalFailed)} 页失败</span>`
+          : "失败 0 页"}</span><br />
+        <span>包含存储整理产生的额外读写</span>`
+    : "暂无全量物理 I/O 统计";
 
   async function exportDiag() {
     setBusy(true);
@@ -136,19 +151,30 @@ export function Maintenance() {
     <//>
 
     <${Card} title="闪存 I/O" icon="database"
-      note="ZMS 物理写回">
-      <div>
-        ${KV({ k: "写入闪存", children: `${fmtBytes(fio.write_bytes)} · ${fmtInt(fio.write_pages)} 页` })}
-        ${KV({ k: "写 I/O 次数", children: fmtInt(fio.write_ios) })}
-        ${KV({ k: "写失败页", children: fio.write_failed_pages > 0
-          ? html`<span style="color:var(--danger)">${fmtInt(fio.write_failed_pages)}</span>`
-          : "0" })}
-        ${KV({ k: "从闪存读回", children: `${fmtBytes(fio.read_bytes)} · ${fmtInt(fio.read_pages)} 页` })}
-        ${KV({ k: "读 I/O 次数", children: fmtInt(fio.read_ios) })}
-        ${KV({ k: "读失败页", children: fio.read_failed_pages > 0
-          ? html`<span style="color:var(--danger)">${fmtInt(fio.read_failed_pages)}</span>`
-          : "0" })}
-        ${KV({ k: "配额计费口径", children: "ZMS 物理写字节" })}
+      note="回写路径 / 全量物理">
+      <div class="stack">
+        ${IOSummary({
+          writeLabel: "数据路径写入",
+          readLabel: "数据路径读回",
+          writeBytes: bd.write_bytes,
+          writeCount: bd.write_blocks,
+          readBytes: bd.read_bytes,
+          readCount: bd.read_blocks,
+          countUnit: "4K 块",
+          meta: bdMeta,
+        })}
+        <div class="divider"></div>
+        ${IOSummary({
+          writeLabel: "全量物理写入",
+          readLabel: "全量物理读回",
+          writeBytes: zmsPhysical.write_bytes,
+          writeCount: zmsPhysical.write_pages,
+          readBytes: zmsPhysical.read_bytes,
+          readCount: zmsPhysical.read_pages,
+          countUnit: "页",
+          meta: zmsPhysicalMeta,
+        })}
+        ${KV({ k: "配额计费口径", children: "ZMS 全量物理写字节" })}
       </div>
     <//>
 

@@ -287,12 +287,32 @@ func (a *App) crystalStatus(device string) CrystalStatus {
 			ReadIOs:          parseIntDefault(stat["zram_bd_physical_read_ios_count"], 0),
 			ReadFailedPages:  parseIntDefault(stat["zram_bd_physical_read_failed_pages"], 0),
 		},
+		BdStatIO: parseBdStatIO(readTrim(filepath.Join(zdir, "bd_stat"))),
 	}
 	// Prefer the stat node's authoritative limit when present.
 	if lim := parseIntDefault(stat["writeback_quota_limit_bytes"], 0); lim > 0 {
 		out.QuotaDay = lim
 	}
 	return out
+}
+
+func parseBdStatIO(raw string) BdStatIO {
+	fields := strings.Fields(raw)
+	if len(fields) < 3 {
+		return BdStatIO{}
+	}
+	current := parseIntDefault(fields[0], 0)
+	read := parseIntDefault(fields[1], 0)
+	write := parseIntDefault(fields[2], 0)
+	return BdStatIO{
+		Present:       true,
+		CurrentBlocks: current,
+		CurrentBytes:  current * pageBytes,
+		ReadBlocks:    read,
+		ReadBytes:     read * pageBytes,
+		WriteBlocks:   write,
+		WriteBytes:    write * pageBytes,
+	}
 }
 
 func parseDevLifeLevel(stat map[string]string, raw string) int64 {
@@ -380,6 +400,7 @@ func (a *App) zmsStatus(device string) ZmsStatus {
 		Objects:     objects,
 		StoredBytes: stored,
 		PackedBytes: packed,
+		PhysicalIO:  parseZmsPhysicalIO(stats),
 	}
 	if stored > 0 {
 		out.SpaceDeltaBytes = stored - packed
@@ -400,6 +421,45 @@ func (a *App) zmsStatus(device string) ZmsStatus {
 			float64(out.OriginalBytes))
 	}
 	return out
+}
+
+func parseZmsPhysicalIO(stats map[string]string) PhysicalIO {
+	if !mapHasAny(stats,
+		"physical_read_pages",
+		"physical_read_ios",
+		"physical_read_failed_pages",
+		"physical_write_pages",
+		"physical_write_bytes",
+		"physical_write_ios",
+		"physical_write_failed_pages") {
+		return PhysicalIO{}
+	}
+	writePages := parseIntDefault(stats["physical_write_pages"], 0)
+	writeBytes := parseIntDefault(stats["physical_write_bytes"], 0)
+	if writeBytes == 0 && writePages > 0 {
+		writeBytes = writePages * pageBytes
+	}
+	readPages := parseIntDefault(stats["physical_read_pages"], 0)
+	return PhysicalIO{
+		Present:          true,
+		WriteBytes:       writeBytes,
+		WritePages:       writePages,
+		WriteIOs:         parseIntDefault(stats["physical_write_ios"], 0),
+		WriteFailedPages: parseIntDefault(stats["physical_write_failed_pages"], 0),
+		ReadBytes:        readPages * pageBytes,
+		ReadPages:        readPages,
+		ReadIOs:          parseIntDefault(stats["physical_read_ios"], 0),
+		ReadFailedPages:  parseIntDefault(stats["physical_read_failed_pages"], 0),
+	}
+}
+
+func mapHasAny(values map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		if _, ok := values[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // policyStatus reports the live memcg policy values (not profile defaults) so

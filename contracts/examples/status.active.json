@@ -46,6 +46,15 @@
         "read_pages": 53760,
         "read_ios": 528,
         "read_failed_pages": 0
+      },
+      "bd_stat_io": {
+        "present": true,
+        "current_blocks": 42359,
+        "current_bytes": 173502464,
+        "read_blocks": 50000,
+        "read_bytes": 204800000,
+        "write_blocks": 309000,
+        "write_bytes": 1265664000
       }
     },
     "zms": {
@@ -67,7 +76,18 @@
       "backing_savings_pct": 66.64,
       "space_delta_bytes": -946096,
       "space_saved_pct": -0.65,
-      "packing_efficiency_pct": 84.43
+      "packing_efficiency_pct": 84.43,
+      "physical_io": {
+        "present": true,
+        "write_bytes": 1332662272,
+        "write_pages": 325357,
+        "write_ios": 1041,
+        "write_failed_pages": 0,
+        "read_bytes": 220200960,
+        "read_pages": 53760,
+        "read_ios": 528,
+        "read_failed_pages": 0
+      }
     },
     "policy": {
       "zram_wm_ratio": 75,

@@ -2,7 +2,7 @@
 
 import { html, render, useState, useEffect, useLayoutEffect, useRef } from "../../vendor/preact.mjs";
 import { Icon } from "../icons.js";
-import { parseSize, isValidSize, fmtBytes, fmtSizeCompact } from "../format.js";
+import { parseSize, isValidSize, fmtBytes, fmtSizeCompact, fmtInt } from "../format.js";
 
 export function cx(...parts) {
   return parts.filter(Boolean).join(" ");
@@ -58,6 +58,25 @@ export function Stat({ label, value, unit, sub }) {
     <div class="stat__label">${label}</div>
     <div class="stat__value">${value}${unit && html`<span class="unit">${unit}</span>`}</div>
     ${sub && html`<div class="stat__sub">${sub}</div>`}
+  </div>`;
+}
+
+export function IOSummary({
+  writeLabel = "写入闪存",
+  readLabel = "从闪存读回",
+  writeBytes,
+  writeCount,
+  readBytes,
+  readCount,
+  countUnit = "页",
+  meta,
+}) {
+  return html`<div class="stack stack--sm">
+    <div class="row" style="gap:14px;align-items:flex-start">
+      ${Stat({ label: writeLabel, value: fmtBytes(writeBytes), sub: `${fmtInt(writeCount)} ${countUnit}` })}
+      ${Stat({ label: readLabel, value: fmtBytes(readBytes), sub: `${fmtInt(readCount)} ${countUnit}` })}
+    </div>
+    ${meta && html`<div class="muted" style="font-size:var(--fs-xs)">${meta}</div>`}
   </div>`;
 }
 
