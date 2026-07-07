@@ -1377,31 +1377,14 @@ details.expand[open] > summary ~ * {
   padding-bottom: 4px;
 }
 
-/* ============ per-app 强制换出/换入操作区 ============ */
-.app-actions {
-  margin-top: 6px;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-}
-.app-actions__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 2px 8px;
-}
-.app-actions__title {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-dim);
-}
-.app-actions__hint {
-  font-size: var(--fs-xs);
-  color: var(--text-mute);
-}
+/* ============ per-app 强制换出/换入操作区（嵌在 app-sub 折叠组内） ============ */
 .app-actions__row {
   display: flex;
   gap: 8px;
+  padding-top: 2px;
+}
+.app-actions__row .btn {
+  flex: 1;
 }
 .app-actions__desc {
   padding: 8px 2px 0;
@@ -1435,41 +1418,3 @@ details.expand[open] > summary ~ * {
   background: var(--danger-bg);
 }
 
-/* 长按确认按钮：填充层从左到右以 --hold 时长充满（充满即触发），
- * 松手立即以常规时长回退。填充层用 clip-path 揭示自带的深色文字副本，
- * 文字不随填充变形，形成"液面漫过文字"的确认动画。 */
-.hold-btn {
-  position: relative;
-  overflow: hidden;
-  flex: 1;
-  --hold: 850ms; /* 兜底；实际值由 JS 的 HOLD_MS 内联覆盖 */
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  /* pan-y 保留纵向滚动（按钮横跨整卡，none 会造成滚动死区）；
-   * 一旦开始滚动浏览器发 pointercancel，长按即取消 —— 恰是防误触。 */
-  touch-action: pan-y;
-}
-.hold-btn__label,
-.hold-btn__fill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.hold-btn__fill {
-  position: absolute;
-  inset: 0;
-  background: var(--grad-btn);
-  color: #04121c;
-  clip-path: inset(0 100% 0 0);
-  transition: clip-path var(--dur) var(--ease);
-  pointer-events: none;
-}
-.hold-btn.is-holding .hold-btn__fill {
-  clip-path: inset(0 0 0 0);
-  transition: clip-path var(--hold) linear;
-}
-.hold-btn.is-holding {
-  border-color: var(--border-accent);
-}

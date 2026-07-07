@@ -3,20 +3,18 @@
  * Fed by GET /v1/apps; keeps its own local state and polls its own endpoint
  * (进入即加载 + 页面级 5s 自动刷新) so the potentially long per-app list never
  * bloats the core /v1/status snapshot. When the kernel exposes the per-memcg
- * trigger nodes (force_swap_supported), each expanded card offers hold-to-run
- * 强制换出 / 强制换入 actions via POST /v1/apps/force-swap. */
+ * trigger nodes (force_swap_supported), each expanded card offers 强制换出 /
+ * 强制换入 actions via POST /v1/apps/force-swap, tucked into a collapsed
+ * sub-group so a stray tap on the card cannot reach them. */
 
 import { html, useState, useEffect, useRef } from "../../vendor/preact.mjs";
 import { useStore, toastError } from "../store.js";
 import { api } from "../api.js";
-import { Banner, Button, Chip, KV, Skeleton, TextField, Segmented, cx } from "../components/ui.js";
+import { Banner, Button, Chip, KV, Skeleton, TextField, Segmented } from "../components/ui.js";
 import { Icon } from "../icons.js";
 import { fmtBytes, fmtInt, fmtUid, isRealUid } from "../format.js";
 
 const PAGE_BYTES = 4096;
-
-// 长按确认阈值：填充动画时长即触发时长，短按/滑动都不会触发。
-const HOLD_MS = 850;
 
 const SORTS = [
   { value: "zram", label: "ZRAM" },
@@ -52,90 +50,6 @@ function hasForceSwapin(app) {
   return [app.swapin_request, app.swapin_req_pages, app.swapin_eff_pages, app.swapin_moved_pages].some(
     (v) => (Number(v) || 0) !== 0
   );
-}
-
-// 长按确认按钮：主指针按下（或按住 Enter/空格）启动填充动画 + 定时器，
-// 按满 HOLD_MS 才触发 onFire；提前抬手/移出/失焦/被系统打断都会取消并回退。
-// 填充过程本身就是"确认中"的可视反馈，无需再弹二次确认框。
-// onHoldChange 向页面上报长按起止，用于暂停轮询防止列表中途重排。
-function HoldButton({ icon, label, busy, disabled, onFire, onHoldChange }) {
-  const [holding, setHolding] = useState(false);
-  const timer = useRef(null);
-  // 镜像最新 props：长按期间另一操作开始时（busy/disabled 翻转）武装中的
-  // 定时器必须立即失效，闭包里的旧值不可信。
-  const blocked = !!(busy || disabled);
-  const blockedRef = useRef(blocked);
-  blockedRef.current = blocked;
-
-  function cancel() {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-      onHoldChange && onHoldChange(false);
-    }
-    setHolding(false);
-  }
-
-  function begin() {
-    if (blockedRef.current || timer.current) return;
-    setHolding(true);
-    onHoldChange && onHoldChange(true);
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      setHolding(false);
-      onHoldChange && onHoldChange(false);
-      if (blockedRef.current) return;
-      try {
-        if (navigator.vibrate) navigator.vibrate(25);
-      } catch (_) {}
-      onFire();
-    }, HOLD_MS);
-  }
-
-  function onPointerDown(e) {
-    // 仅主指针的主键：排除右键（配合 contextmenu 抑制会静默触发）与多指。
-    if (e.button !== 0 || e.isPrimary === false) return;
-    // 防止长按触发文本选择/系统菜单；滚动抢占由 CSS touch-action 处理。
-    e.preventDefault();
-    // 显式捕获让鼠标在按钮外抬起也能派发 pointerup 回来（触摸默认隐式捕获）。
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch (_) {}
-    begin();
-  }
-
-  function onKeyDown(e) {
-    if (e.repeat || (e.key !== "Enter" && e.key !== " ")) return;
-    e.preventDefault(); // 拦掉默认 click，键盘走同样的"按住确认"
-    begin();
-  }
-
-  useEffect(() => {
-    if (blocked) cancel();
-    // eslint-disable-next-line
-  }, [blocked]);
-  // 卸载时清掉挂起的定时器，避免对已卸载组件 setState / 幽灵触发。
-  useEffect(() => () => cancel(), []);
-
-  const inner = html`${busy ? html`<span class="btn__spin"></span>` : Icon({ name: icon, size: 15 })}${label}`;
-  return html`<button
-    type="button"
-    class=${cx("btn", "btn--sm", "hold-btn", holding && "is-holding")}
-    style=${`--hold:${HOLD_MS}ms`}
-    disabled=${disabled}
-    aria-label=${`${label}（长按执行，中途松手取消）`}
-    onPointerDown=${onPointerDown}
-    onPointerUp=${cancel}
-    onPointerLeave=${cancel}
-    onPointerCancel=${cancel}
-    onKeyDown=${onKeyDown}
-    onKeyUp=${cancel}
-    onBlur=${cancel}
-    onContextMenu=${(e) => e.preventDefault()}
-  >
-    <span class="hold-btn__label">${inner}</span>
-    <span class="hold-btn__fill" aria-hidden="true">${inner}</span>
-  </button>`;
 }
 
 // 后端 result 分类 → 展示文案与色调。ret 为内核原始返回（>0 页数，<0 -errno）。
@@ -182,12 +96,13 @@ function forceResultLine(action) {
 // 受控卡片：自己管理展开态，配合 CSS grid-template-rows 过渡实现平滑
 // 展开/收起（原生 <details> 无高度动画）。只展示真实有意义的字段，内核
 // 占位/兼容列（anon/policy/out_trig/in_mb）一律不显示。
-function AppCard({ app, forceSwap, onChanged, onHoldChange }) {
+function AppCard({ app, forceSwap, onChanged }) {
   const [open, setOpen] = useState(false);
   const [forceOpen, setForceOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   // action: null | {op, phase:"running"} | {op, phase:"done", res} | {op, phase:"error", err}
   const [action, setAction] = useState(null);
-  // 重入护栏：state 更新是异步的，双指同时按满两个按钮时两次 onFire 都会
+  // 重入护栏：state 更新是异步的，双指同时点下两个按钮时两次 onClick 都会
   // 看到旧的 running=null，必须用 ref 同步拦下第二发。
   const inflight = useRef(false);
 
@@ -245,39 +160,48 @@ function AppCard({ app, forceSwap, onChanged, onHoldChange }) {
         ${KV({ k: "ZMS 回写·压缩后", children: fmtBytes(app.eswap_compr_bytes) })}
         ${KV({ k: "ZMS 回写·原始", children: fmtBytes(app.eswap_orig_bytes) })}
         ${forceSwap &&
-        html`<div class="app-actions">
-          <div class="app-actions__head">
-            <span class="app-actions__title">内存操作</span>
-            <span class="app-actions__hint">长按执行，中途松手取消</span>
-          </div>
-          <div class="app-actions__row">
-            <${HoldButton}
-              icon="swapout"
-              label="强制换出"
-              busy=${running === "swapout"}
-              disabled=${running !== null && running !== "swapout"}
-              onFire=${() => fire("swapout")}
-              onHoldChange=${onHoldChange}
-            />
-            <${HoldButton}
-              icon="swapin"
-              label="强制换入"
-              busy=${running === "swapin"}
-              disabled=${running !== null && running !== "swapin"}
-              onFire=${() => fire("swapin")}
-              onHoldChange=${onHoldChange}
-            />
-          </div>
-          ${line &&
-          html`<div
-            class=${`app-actions__result app-actions__result--${line.tone} fade-in`}
-            key=${`${action.op}-${action.phase}`}
+        html`<div class=${`app-sub${actionsOpen ? " is-open" : ""}`}>
+          <button
+            class="app-sub__summary"
+            type="button"
+            aria-expanded=${actionsOpen ? "true" : "false"}
+            onClick=${() => setActionsOpen((v) => !v)}
           >
-            ${line.text}
-          </div>`}
-          <div class="app-actions__desc">
-            换出：将该应用的 ZRAM 压缩页全部回写到 ZMS 后备存储（受每日配额限制）；
-            换入：将已回写页拉回 ZRAM。内核异步执行，结果回填到上方统计。
+            <span class="app-sub__title">内存操作</span>
+            <span class="app-sub__chev">${Icon({ name: "chevron", size: 15 })}</span>
+          </button>
+          <div class="app-sub__wrap">
+            <div class="app-sub__detail">
+              <div class="app-actions__row">
+                ${Button({
+                  size: "sm",
+                  icon: "swapout",
+                  loading: running === "swapout",
+                  disabled: running !== null && running !== "swapout",
+                  onClick: () => fire("swapout"),
+                  children: "强制换出",
+                })}
+                ${Button({
+                  size: "sm",
+                  icon: "swapin",
+                  loading: running === "swapin",
+                  disabled: running !== null && running !== "swapin",
+                  onClick: () => fire("swapin"),
+                  children: "强制换入",
+                })}
+              </div>
+              ${line &&
+              html`<div
+                class=${`app-actions__result app-actions__result--${line.tone} fade-in`}
+                key=${`${action.op}-${action.phase}`}
+              >
+                ${line.text}
+              </div>`}
+              <div class="app-actions__desc">
+                换出：将该应用的 ZRAM 压缩页全部回写到 ZMS 后备存储（受每日配额限制）；
+                换入：将已回写页拉回 ZRAM。内核异步执行，结果回填到上方统计。
+              </div>
+            </div>
           </div>
         </div>`}
         <div class=${`app-sub${forceOpen ? " is-open" : ""}`}>
@@ -317,12 +241,6 @@ export function AppsPage() {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("zram");
   const [pending, setPending] = useState(0);
-  // 长按进行中的按钮计数：>0 时跳过本轮自动刷新，避免列表重排把手指
-  // 按住的按钮移走（既打断填充动画，又可能丢失取消事件）。
-  const holdCount = useRef(0);
-  const onHoldChange = (h) => {
-    holdCount.current = Math.max(0, holdCount.current + (h ? 1 : -1));
-  };
 
   async function load(manual) {
     if (gateAllowed === false) return;
@@ -347,7 +265,7 @@ export function AppsPage() {
   useEffect(() => {
     load(false);
     const t = setInterval(() => {
-      if (document.hidden || holdCount.current > 0) return;
+      if (document.hidden) return;
       load(false);
     }, 5000);
     return () => clearInterval(t);
@@ -390,7 +308,6 @@ export function AppsPage() {
                   app=${app}
                   forceSwap=${forceSwap}
                   onChanged=${() => load(false)}
-                  onHoldChange=${onHoldChange}
                   key=${`${app.name}-${app.uid}`}
                 />`
             )}
