@@ -12,6 +12,11 @@ The module is designed as a full-control ZRAM owner:
 - communicate with the backend through a stable local API contract;
 - run a persistent daemon that detects and reverts third-party drift after
   ownership is established.
+- on Oplus/ColorOS, generate device-specific memory-policy XML overlays during
+  installation to delay vendor background cleanup and retain more apps.
+- optionally age long-idle background apps under memory pressure through the
+  kernel's per-memcg `memory.force_swapout` ABI, with foreground fail-safe
+  protection.
 
 Start here:
 

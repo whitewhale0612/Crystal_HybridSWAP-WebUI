@@ -19,6 +19,12 @@ const (
 	maxDevLifeLevel          = 3
 	maxZramIncreaseMiB       = 1 << 20
 	maxAvailBufferMB         = 4294967295
+	minAgingIdleSec          = 60
+	maxAgingIdleSec          = 7 * 24 * 60 * 60
+	maxAgingMinZramMB        = 4096
+	maxAgingPressureMB       = 64 * 1024
+	maxAgingCooldownSec      = 7 * 24 * 60 * 60
+	maxAgingAppsPerCycle     = 8
 )
 
 func (a *App) putProfile(body []byte) bool {
@@ -63,7 +69,19 @@ func decodeProfile(body []byte) (*Profile, error) {
 	if err := decodeStrictJSON(body, &profile, "empty profile body"); err != nil {
 		return nil, err
 	}
+	// Profiles saved before app aging had no aging object. Normalize the zero
+	// value to the disabled defaults so the UI receives a valid profile.
+	if profile.Aging == (AgingProfile{}) {
+		profile.Aging = defaultAgingProfile()
+	}
 	return &profile, nil
+}
+
+func defaultAgingProfile() AgingProfile {
+	return AgingProfile{
+		Enabled: false, IdleAfterSec: 900, MinZramMB: 64,
+		PressureAvailableBelowMB: 4096, CooldownSec: 1800, MaxAppsPerCycle: 1,
+	}
 }
 
 func validateProfileShape(body []byte) error {
@@ -152,6 +170,24 @@ func validateProfileShape(body []byte) error {
 		}
 		if err := requireNonNullProfileFields(ab, "profile.policy.avail_buffers",
 			"avail_mb", "min_mb", "high_mb", "free_swap_threshold_mb"); err != nil {
+			return err
+		}
+	}
+	if raw, ok := root["aging"]; ok && !rawIsJSONNull(raw) {
+		aging, err := requiredProfileObject(root, "profile.aging", "aging")
+		if err != nil {
+			return err
+		}
+		if err := requireProfileKeys(aging, "profile.aging",
+			"enabled", "idle_after_sec", "min_zram_mb",
+			"pressure_available_below_mb", "cooldown_sec",
+			"max_apps_per_cycle"); err != nil {
+			return err
+		}
+		if err := requireNonNullProfileFields(aging, "profile.aging",
+			"enabled", "idle_after_sec", "min_zram_mb",
+			"pressure_available_below_mb", "cooldown_sec",
+			"max_apps_per_cycle"); err != nil {
 			return err
 		}
 	}
@@ -277,6 +313,21 @@ func validateProfile(p *Profile) error {
 	if err := validBool01(p.Policy.ErmAvailBufferEnable, "policy.erm_avail_buffer_enable"); err != nil {
 		return err
 	}
+	if p.Aging.IdleAfterSec < minAgingIdleSec || p.Aging.IdleAfterSec > maxAgingIdleSec {
+		return errors.New("profile.aging.idle_after_sec is out of range")
+	}
+	if p.Aging.MinZramMB <= 0 || p.Aging.MinZramMB > maxAgingMinZramMB {
+		return errors.New("profile.aging.min_zram_mb is out of range")
+	}
+	if p.Aging.PressureAvailableBelowMB <= 0 || p.Aging.PressureAvailableBelowMB > maxAgingPressureMB {
+		return errors.New("profile.aging.pressure_available_below_mb is out of range")
+	}
+	if p.Aging.CooldownSec < minAgingIdleSec || p.Aging.CooldownSec > maxAgingCooldownSec {
+		return errors.New("profile.aging.cooldown_sec is out of range")
+	}
+	if p.Aging.MaxAppsPerCycle <= 0 || p.Aging.MaxAppsPerCycle > maxAgingAppsPerCycle {
+		return errors.New("profile.aging.max_apps_per_cycle is out of range")
+	}
 	return nil
 }
 
@@ -341,6 +392,7 @@ func defaultProfile() *Profile {
 		Backing: BackingProfile{Mode: "block"},
 		Crystal: CrystalProfile{},
 		Policy:  PolicyProfile{},
+		Aging:   defaultAgingProfile(),
 		Boot:    BootProfile{PostFSTimeoutMS: 8000},
 		Swap:    SwapProfile{Enabled: true, Priority: 32767},
 	}

@@ -14,6 +14,106 @@ import (
 	"time"
 )
 
+const (
+	daemonLogMaxBytes      int64 = 512 * 1024
+	daemonLogRepeatHold          = 15 * time.Minute
+	daemonLogRepeatEntries       = 512
+)
+
+type daemonLogRepeat struct {
+	last       time.Time
+	suppressed int
+}
+
+// daemonLogger bounds both disk growth and repeated diagnostic noise. A
+// message is emitted immediately once, then identical copies are counted for
+// a short window and summarized when the message becomes eligible again.
+// Keeping this at the daemon boundary also protects future call sites from
+// accidentally reintroducing per-cycle log storms.
+type daemonLogger struct {
+	out     io.Writer
+	file    *os.File
+	path    string
+	size    int64
+	repeats map[string]daemonLogRepeat
+}
+
+func newDaemonLogger(logDir string) *daemonLogger {
+	l := &daemonLogger{out: os.Stderr, repeats: map[string]daemonLogRepeat{}}
+	path := filepath.Join(logDir, "daemon.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return l
+	}
+	var size int64
+	if info, statErr := f.Stat(); statErr == nil {
+		size = info.Size()
+	}
+	l.file, l.out, l.path, l.size = f, f, path, size
+	return l
+}
+
+func (l *daemonLogger) Close() {
+	if l.file != nil {
+		_ = l.file.Close()
+	}
+}
+
+func (l *daemonLogger) writeLine(now time.Time, message string) {
+	line := fmt.Sprintf("[%d] %s\n", now.Unix(), message)
+	if l.file != nil {
+		if l.size+int64(len(line)) > daemonLogMaxBytes {
+			_ = l.file.Close()
+			_ = os.Remove(l.path + ".1")
+			if err := os.Rename(l.path, l.path+".1"); err == nil {
+				if f, openErr := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); openErr == nil {
+					l.file, l.out, l.size = f, f, 0
+				} else {
+					l.file, l.out, l.size = nil, os.Stderr, 0
+				}
+			} else if f, openErr := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); openErr == nil {
+				l.file, l.out = f, f
+				if info, statErr := f.Stat(); statErr == nil {
+					l.size = info.Size()
+				}
+			} else {
+				l.file, l.out, l.size = nil, os.Stderr, 0
+			}
+		}
+	}
+	_, _ = io.WriteString(l.out, line)
+	if l.file != nil {
+		l.size += int64(len(line))
+	}
+}
+
+func (l *daemonLogger) Printf(format string, v ...any) {
+	message := fmt.Sprintf(format, v...)
+	now := time.Now()
+	if previous, ok := l.repeats[message]; ok {
+		if now.Sub(previous.last) < daemonLogRepeatHold {
+			previous.suppressed++
+			l.repeats[message] = previous
+			return
+		}
+		if previous.suppressed > 0 {
+			l.writeLine(now, fmt.Sprintf("previous message repeated %d times: %s", previous.suppressed, message))
+		}
+	}
+	if len(l.repeats) >= daemonLogRepeatEntries {
+		oldest := ""
+		var oldestAt time.Time
+		for key, entry := range l.repeats {
+			if oldest == "" || entry.last.Before(oldestAt) {
+				oldest, oldestAt = key, entry.last
+			}
+		}
+		delete(l.repeats, oldest)
+	}
+	l.writeLine(now, message)
+	l.repeats[message] = daemonLogRepeat{last: now}
+}
+
 // runDaemon is the standing WebUI owner. It polls managed nodes and reconciles
 // the saved profile onto the kernel only when an external actor has drifted a
 // managed field.
@@ -30,15 +130,9 @@ func (a *App) runDaemon(args []string) int {
 	}
 
 	_ = a.ensureDirs()
-	var out io.Writer = os.Stderr
-	if f, err := os.OpenFile(filepath.Join(a.LogDir, "daemon.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		out = f
-		defer f.Close()
-	}
-	logln := func(format string, v ...any) {
-		fmt.Fprintf(out, "[%d] "+format+"\n", append([]any{time.Now().Unix()}, v...)...)
-	}
+	logger := newDaemonLogger(a.LogDir)
+	defer logger.Close()
+	logln := logger.Printf
 
 	unlockDaemon, locked, err := a.lockDaemon()
 	if err != nil {
@@ -57,31 +151,104 @@ func (a *App) runDaemon(args []string) int {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigCh)
 
-	logln("daemon start (cadence: 1s pre-unlock, 60s post-unlock)")
+	logln("daemon start (cadence: 1s pre-unlock, 60s full post-unlock, 5s top-app aging probe when enabled)")
+	var profile *Profile
+	var nextProfileLoad time.Time
+	var nextFullCycle time.Time
+	wasUnlocked := false
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
 	for {
 		if a.moduleDisabled() {
 			logln("module disabled; daemon exits")
 			return 0
 		}
-		profile, _ := a.loadProfile()
-		if profile.Mode == "diagnostic" {
-			logln("diagnostic profile; idle hold (no takeover)")
-		} else {
-			a.enforceState(profile, logln)
+
+		now := time.Now()
+		unlocked := a.userUnlocked()
+		if unlocked && !wasUnlocked {
+			// Force one full post-unlock reconcile and let the first top-app
+			// sample establish a fresh foreground baseline.
+			nextProfileLoad = time.Time{}
+			nextFullCycle = time.Time{}
+			a.agingForegroundSeen = nil
+			a.agingForegroundProbeOK = false
 		}
-		interval := override
-		if interval == 0 {
-			interval = 1 * time.Second
-			if a.userUnlocked() {
-				interval = 60 * time.Second
+		if profile == nil || !now.Before(nextProfileLoad) {
+			profile, _ = a.loadProfile()
+			if profile == nil {
+				profile = defaultProfile()
+			}
+			profileInterval := agingFullCycle
+			if !unlocked {
+				profileInterval = time.Second
+			} else if override > 0 {
+				profileInterval = override
+			}
+			nextProfileLoad = now.Add(profileInterval)
+		}
+
+		if !unlocked {
+			// Keep the existing early-boot takeover cadence. Aging is held
+			// until unlock because top-app state is not reliable before then.
+			a.agingForegroundSeen = nil
+			a.agingForegroundProbeOK = false
+			if profile.Mode != "diagnostic" {
+				a.enforceState(profile, logln)
+			} else {
+				logln("diagnostic profile; idle hold (no takeover)")
+			}
+			nextFullCycle = time.Time{}
+		} else if profile.Mode == "diagnostic" {
+			a.agingForegroundSeen = nil
+			a.agingForegroundProbeOK = false
+			if nextFullCycle.IsZero() || !now.Before(nextFullCycle) {
+				logln("diagnostic profile; idle hold (no takeover)")
+				nextFullCycle = now.Add(agingFullCycle)
+			}
+		} else {
+			if profile.Aging.Enabled {
+				a.agingForegroundRefresh(logln)
+			} else {
+				a.agingForegroundSeen = nil
+				a.agingForegroundProbeOK = false
+			}
+			if nextFullCycle.IsZero() || !now.Before(nextFullCycle) {
+				a.enforceState(profile, logln)
+				a.agingCycle(profile, logln)
+				cycleInterval := agingFullCycle
+				if override > 0 {
+					cycleInterval = override
+				}
+				nextFullCycle = now.Add(cycleInterval)
 			}
 		}
+		wasUnlocked = unlocked
+
+		interval := override
+		if interval == 0 {
+			if !unlocked {
+				interval = time.Second
+			} else if profile.Mode != "diagnostic" && profile.Aging.Enabled {
+				interval = agingForegroundPoll
+			} else {
+				interval = agingFullCycle
+			}
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(interval)
 		select {
 		case s := <-sigCh:
 			logln("signal %v; daemon exits", s)
 			return 0
-		case <-time.After(interval):
+		case <-timer.C:
 		}
 	}
 }

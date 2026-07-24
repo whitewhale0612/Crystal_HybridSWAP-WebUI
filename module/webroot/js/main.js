@@ -22,6 +22,7 @@ import { Overview } from "./pages/overview.js";
 import { ZramSetup } from "./pages/zram.js";
 import { CrystalPolicy } from "./pages/crystal.js";
 import { PressurePolicy } from "./pages/pressure.js";
+import { AgingPolicy } from "./pages/aging.js";
 import { Maintenance } from "./pages/maintenance.js";
 import { AppsPage } from "./pages/apps.js";
 
@@ -30,6 +31,7 @@ const PAGES = {
   zram: ZramSetup,
   crystal: CrystalPolicy,
   pressure: PressurePolicy,
+  aging: AgingPolicy,
   maintenance: Maintenance,
   apps: AppsPage,
 };

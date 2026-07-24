@@ -15,6 +15,9 @@ module/state/
 module/diagnostics/
 *.log
 
+# Local legacy module/source dump; not part of this WebUI project.
+/zram/
+
 # Local editor and OS files
 .DS_Store
 *~

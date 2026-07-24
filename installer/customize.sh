@@ -27,6 +27,16 @@ esac
 [ -f "$MODPATH/bin/chswapctl" ] ||
   chswap_fail "bin/chswapctl is missing"
 
+[ -f "$MODPATH/oplus-policy.sh" ] ||
+  chswap_fail "oplus-policy.sh is missing"
+
+# Build device-specific XML overlays from the installed ColorOS files. Missing
+# files mean this is not a supported Oplus layout and are intentionally skipped.
+. "$MODPATH/oplus-policy.sh"
+if ! chswap_prepare_oplus_policy "${CHSWAP_OPLUS_ROOT:-/my_stock}" "$MODPATH"; then
+  ui_print "! Failed to prepare Oplus background policy; continuing without it"
+fi
+
 chmod 0755 \
   "$MODPATH/post-fs-data.sh" \
   "$MODPATH/service.sh" \
@@ -35,3 +45,5 @@ chmod 0755 \
   "$MODPATH/uninstall.sh" \
   "$MODPATH/bin/chswapctl" 2>/dev/null ||
   chswap_fail "failed to set executable permissions"
+chmod 0644 "$MODPATH/oplus-policy.sh" 2>/dev/null ||
+  chswap_fail "failed to set Oplus policy helper permissions"

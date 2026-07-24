@@ -54,6 +54,7 @@ module_files=(
   module.prop
   launcher.png
   skip_mount
+  oplus-policy.sh
   post-fs-data.sh
   service.sh
   boot-completed.sh
@@ -276,6 +277,7 @@ chmod 0755 \
   "$stage/daemon.sh" \
   "$stage/uninstall.sh" \
   "$stage/bin/chswapctl"
+chmod 0644 "$stage/oplus-policy.sh"
 chmod 0644 "$stage/META-INF/com/google/android/updater-script"
 
 find "$stage" -type f \( -name ".DS_Store" -o -name "*~" \) -delete

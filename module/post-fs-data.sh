@@ -52,6 +52,11 @@ fi
 
 echo "post-fs-data: start $(date +%s 2>/dev/null)" >>"$LOG"
 
+if [ -f "$MODDIR/oplus-policy.sh" ]; then
+  . "$MODDIR/oplus-policy.sh"
+  chswap_mount_oplus_policy "$MODDIR" "$LOG"
+fi
+
 run_bounded 35 "$CTL" api POST /v1/boot/apply \
   --json '{"phase":"post-fs-data"}' >>"$LOG" 2>&1 || true
 

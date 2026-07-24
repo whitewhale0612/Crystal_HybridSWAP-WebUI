@@ -53,6 +53,14 @@ export function defaultProfile() {
       avail_buffers: null,
       erm_avail_buffer_enable: null,
     },
+    aging: {
+      enabled: false,
+      idle_after_sec: 900,
+      min_zram_mb: 64,
+      pressure_available_below_mb: 4096,
+      cooldown_sec: 1800,
+      max_apps_per_cycle: 1,
+    },
   };
 }
 
@@ -90,7 +98,7 @@ export function validateProfile(p) {
   const e = {};
   if (!p || typeof p !== "object") return { _: "配置无效" };
 
-  objectKeys(p, "profile", ["schema", "mode", "boot", "zram", "backing", "swap", "crystal", "policy"], [], e);
+  objectKeys(p, "profile", ["schema", "mode", "boot", "zram", "backing", "swap", "crystal", "policy"], ["aging"], e);
   if (p.schema !== "chswap.profile.v1") e["schema"] = "schema 不匹配";
   if (!MODES.includes(p.mode)) e["mode"] = "模式非法";
 
@@ -153,6 +161,22 @@ export function validateProfile(p) {
   }
   if (!isUnset(po.erm_avail_buffer_enable) && ![0, 1].includes(po.erm_avail_buffer_enable))
     e["policy.erm_avail_buffer_enable"] = "应为 0 或 1";
+
+  const ag = p.aging;
+  if (ag != null) {
+    objectKeys(ag, "aging", ["enabled", "idle_after_sec", "min_zram_mb", "pressure_available_below_mb", "cooldown_sec", "max_apps_per_cycle"], [], e);
+    if (ag.enabled !== true && ag.enabled !== false) e["aging.enabled"] = "必须为开关值";
+    if (!(isInt(ag.idle_after_sec) && ag.idle_after_sec >= 60 && ag.idle_after_sec <= 604800))
+      e["aging.idle_after_sec"] = "范围 60–604800 秒";
+    if (!(isInt(ag.min_zram_mb) && ag.min_zram_mb >= 1 && ag.min_zram_mb <= 4096))
+      e["aging.min_zram_mb"] = "范围 1–4096 MB";
+    if (!(isInt(ag.pressure_available_below_mb) && ag.pressure_available_below_mb >= 1 && ag.pressure_available_below_mb <= 65536))
+      e["aging.pressure_available_below_mb"] = "范围 1–65536 MB";
+    if (!(isInt(ag.cooldown_sec) && ag.cooldown_sec >= 60 && ag.cooldown_sec <= 604800))
+      e["aging.cooldown_sec"] = "范围 60–604800 秒";
+    if (!(isInt(ag.max_apps_per_cycle) && ag.max_apps_per_cycle >= 1 && ag.max_apps_per_cycle <= 8))
+      e["aging.max_apps_per_cycle"] = "范围 1–8 个";
+  }
 
   return e;
 }

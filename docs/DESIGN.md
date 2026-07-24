@@ -116,6 +116,69 @@ left the sysfs file at `0444`. This is required for nodes such as `disksize` and
 `diagnostic` mode is read-only. Apply returns a skipped step and does not write
 kernel nodes.
 
+## Optional app aging
+
+The profile may include an `aging` object. It is disabled by default and is
+optional so profiles written by older module versions remain valid:
+
+```json
+"aging": {
+  "enabled": false,
+  "idle_after_sec": 900,
+  "min_zram_mb": 64,
+  "pressure_available_below_mb": 4096,
+  "cooldown_sec": 1800,
+  "max_apps_per_cycle": 1
+}
+```
+
+When enabled, the daemon tracks each app UID's last foreground observation in
+`data/state/aging.json`. It only considers an app after the idle period, with
+enough ZRAM data, and while `MemAvailable` is below the pressure threshold.
+Candidates without an existing ESWAP footprint are selected first, then those
+with the lowest ESWAP/original-memory ratio, then by longest idle time and
+largest ZRAM footprint. This gives fresh background apps a turn before an app
+that has already been substantially offloaded; it is deliberately not a
+permanent "already written" exclusion, because an app can later accumulate new
+ZRAM pages. The per-cycle limit prevents a burst of writeback.
+
+After unlock, a lightweight tracker reads `/dev/cpuset/top-app/cgroup.procs`
+every five seconds and maps only those PIDs through `/proc/PID/status`. It
+updates `last_foreground_unix` only when a UID enters the set; the full app/ZRAM
+aging cycle remains on the 60-second cadence. The top-app set is checked both
+before and after acquiring the apply lock. If the top-app source is unavailable,
+automatic aging stops for the cycle and the next successful sample is treated as
+a new foreground entry. Foreground and core system package names are excluded.
+A mixed-UID memcg is resolved to its one regular application UID by inspecting
+live `cgroup.procs`; isolated/WebView UIDs are ignored for identity, while the
+resulting force-swapout still covers the complete memcg. If the regular UID is
+missing, ambiguous, or the package has multiple matching memcgs, the candidate
+is skipped fail-safe. For processes
+spawned directly by a system zygote, `oom_score_adj < 200` is always protected.
+The exact `oom_score_adj == 200` boundary is protected only when the package
+still has a foreground service or its UID appears in Android's active
+media/audio playback state. If either `dumpsys` state cannot be read, the
+boundary process is protected fail-safe. Low-score children spawned inside the
+same app UID are ignored because they can retain stale inherited scores after
+ActivityManager demotes the real app processes. The daemon emits one compact
+per-cycle summary of filter counts instead of logging every skipped app.
+Successful force-swapout enters the configured cooldown. Kernel errors and
+`ENODATA` results persist a
+failure streak and back off at 5 minutes, 15 minutes, 30 minutes, 1 hour, 2
+hours, 4 hours, then at most 6 hours. After three consecutive kernel-error or
+no-data outcomes, the memcg must grow by at least the configured ZRAM floor or
+25% of its prior original ZRAM footprint before it is rearmed. Quota and device
+failures use only the backoff, because they are global conditions rather than a
+property of that app. Busy and still-pending work use only a short retry and do
+not increase that streak. This reuses
+`memory.force_swapout`, so it moves a memcg's existing ZRAM pages to HybridSwap
+backing storage rather than doing page-level LRU aging.
+
+Daemon logging is bounded independently of the aging policy: identical
+messages are suppressed for 15 minutes with a repetition count emitted when
+the message resumes, and `daemon.log` rotates at 512 KiB, retaining one `.1`
+backup.
+
 ## Daemon
 
 `chswapctl daemon` is the standing userspace owner. It uses a pidfile plus flock
@@ -134,6 +197,19 @@ failed reset or write.
 
 ## Boot Scripts
 
+- `customize.sh` copies supported Oplus/ColorOS memory-policy XML files from
+  `/my_stock/etc/extension`, applies the background-retention policy to module
+  copies under the module-root `my_stock/etc/extension`, and leaves the
+  original partition unchanged.
+- The app-management transform keeps the OSense condition and clear-policy
+  tables aligned: all available 16 GiB `app_switch*` and `launcher*` normal/C
+  scenes receive `900|1200|1450|1700|1900` trigger thresholds and matching
+  `1150|1450|1700|2000|2200` purpose targets. Level 2 is changed from
+  `smart-force` to throttled `smart`; quick-boot and other RAM tiers are not
+  modified. Unsupported layouts are omitted instead of being partially
+  mounted.
+- `post-fs-data.sh` bind-mounts those copies before the early full-control
+  attempt. Missing XML files are skipped so non-Oplus devices are unaffected.
 - `post-fs-data.sh`: bounded early full-control attempt.
 - `service.sh`: service-phase reconcile and detached daemon launch.
 - `boot-completed.sh`: final reconcile and boot status update.

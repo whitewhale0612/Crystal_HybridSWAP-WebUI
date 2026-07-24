@@ -60,49 +60,101 @@ func (a *App) forceSwapAPI(body []byte) bool {
 		return false
 	}
 	defer unlock()
-
-	dir, found := a.findAppMemcg(memcg, req.Name, req.UID)
-	if !found {
-		writeEnvelope(false, nil, apiError("E_APP_NOT_FOUND",
-			fmt.Sprintf("no memcg named %q; the app may have exited", req.Name),
+	result, err := a.forceSwapLocked(req.Name, req.UID, req.Op)
+	if err != nil {
+		code := errorCodeFromErr(err)
+		if strings.Contains(err.Error(), "E_APP_NOT_FOUND") {
+			code = "E_APP_NOT_FOUND"
+		}
+		writeEnvelope(false, nil, apiError(code, err.Error(),
 			map[string]any{"name": req.Name, "uid": req.UID}), nil)
 		return false
 	}
+	return a.respondOK(result)
+}
 
+// forceSwapLocked performs one kernel trigger while the caller holds the
+// apply lock. Keeping this common path shared by the API and the aging worker
+// prevents automatic reclaim from racing a zram takeover.
+func (a *App) forceSwapLocked(name string, uid int64, op string) (ForceSwapResult, error) {
+	memcg := a.memcgRoot()
+	node := "memory.force_" + op
+	if memcg == "" || !a.exists(filepath.Join(memcg, node)) {
+		return ForceSwapResult{}, fmt.Errorf("E_KERNEL_NODE_MISSING: %s", filepath.Join(memcg, node))
+	}
+	dir, found := a.findAppMemcg(memcg, name, uid)
+	if !found {
+		return ForceSwapResult{}, fmt.Errorf("E_APP_NOT_FOUND: no memcg named %q; the app may have exited", name)
+	}
 	target := filepath.Join(dir, node)
 	started := time.Now()
 	if err := writeKernelNode(target, []byte("1")); err != nil {
-		writeEnvelope(false, nil, apiError(kernelWriteErrorCode(err), err.Error(),
-			map[string]any{"target": target}), nil)
-		return false
+		return ForceSwapResult{}, fmt.Errorf("%s: %w", kernelWriteErrorCode(err), err)
 	}
-
 	retKey := "forceSwapoutLastRet"
-	if req.Op == "swapin" {
+	if op == "swapin" {
 		retKey = "forceSwapinLastRet"
 	}
 	waitMS := a.ForceWaitMS
 	if waitMS <= 0 {
 		waitMS = forceSwapDefaultWaitMS
 	}
-	ret, completed := a.pollForceSwapResult(filepath.Join(dir, "memory.swap_stat"),
-		retKey, waitMS)
-
+	ret, completed := a.pollForceSwapResult(filepath.Join(dir, "memory.swap_stat"), retKey, waitMS)
 	result := ForceSwapResult{
-		Op:         req.Op,
-		Name:       req.Name,
-		UID:        req.UID,
-		Target:     target,
-		Completed:  completed,
-		Result:     forceSwapResultKind(ret, completed),
-		Ret:        ret,
+		Op: op, Name: name, UID: uid, Target: target,
+		Completed: completed, Result: forceSwapResultKind(ret, completed), Ret: ret,
 		DurationMS: time.Since(started).Milliseconds(),
 	}
 	if ret > 0 {
 		result.Pages = ret
 		result.Bytes = ret * pageBytes
 	}
-	return a.respondOK(result)
+	return result, nil
+}
+
+// memcgDirsByName returns tracked memcgs whose driver-visible name matches the
+// application name. The list is intentionally kept small: callers use it only
+// for one candidate, not as a replacement for the kernel app table.
+func (a *App) memcgDirsByName(root string, name string) []string {
+	var dirs []string
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() || path == root {
+			return nil
+		}
+		if readTrim(filepath.Join(path, "memory.name")) == name {
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+	return dirs
+}
+
+// memcgTaskUIDs reads the live task set for one memcg. It is used only for
+// mixed UID resolution and clone disambiguation; normal single-UID paths keep
+// using the cheaper memory.app_uid value.
+func (a *App) memcgTaskUIDs(dir string) map[int64]bool {
+	uids := map[int64]bool{}
+	raw := readTrim(filepath.Join(dir, "cgroup.procs"))
+	if raw == "" {
+		raw = readTrim(filepath.Join(dir, "tasks"))
+	}
+	for _, pid := range strings.Fields(raw) {
+		if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
+			continue
+		}
+		status := readTrim(a.proc(filepath.Join(pid, "status")))
+		for _, line := range strings.Split(status, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 || fields[0] != "Uid:" {
+				continue
+			}
+			if uid, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+				uids[uid] = true
+			}
+			break
+		}
+	}
+	return uids
 }
 
 // findAppMemcg locates the memcg directory whose driver entry name — read back
@@ -111,20 +163,10 @@ func (a *App) forceSwapAPI(body []byte) bool {
 // disambiguates between several same-named directories (dual-app clones share
 // the package name): memory.app_uid rescans live tasks on every read and
 // drifts to -1 once the app's processes exit, so a sole name match is accepted
-// regardless of uid, and among several matches a drifted candidate is
-// acceptable — but a directory that affirmatively reports a different real uid
-// is another app's clone and must never be triggered in its place.
+// regardless of uid. A mixed memcg is additionally matched against its live
+// task UIDs when the caller supplies the resolved mother UID.
 func (a *App) findAppMemcg(root string, name string, uid int64) (string, bool) {
-	var byName []string
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() || path == root {
-			return nil
-		}
-		if readTrim(filepath.Join(path, "memory.name")) == name {
-			byName = append(byName, path)
-		}
-		return nil
-	})
+	byName := a.memcgDirsByName(root, name)
 	if len(byName) == 0 {
 		return "", false
 	}
@@ -135,6 +177,9 @@ func (a *App) findAppMemcg(root string, name string, uid int64) (string, bool) {
 	for _, dir := range byName {
 		cur, err := strconv.ParseInt(readTrim(filepath.Join(dir, "memory.app_uid")), 10, 64)
 		if err == nil && cur == uid {
+			return dir, true
+		}
+		if uid > 0 && cur == -2 && a.memcgTaskUIDs(dir)[uid] {
 			return dir, true
 		}
 		if drifted == "" && (err != nil || cur < 0) {
@@ -205,6 +250,9 @@ func forceSwapResultKind(ret int64, completed bool) string {
 		return "quota"
 	case ret == -int64(syscall.ENODEV):
 		return "nodev"
+	case ret == -int64(syscall.ENOSPC):
+		// ENOSPC is a backing-store condition, not an application failure.
+		return "storage_full"
 	default:
 		return "error"
 	}

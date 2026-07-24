@@ -36,7 +36,8 @@ is_release_zip_entry() {
   local entry="$1"
   local tail
   case "$entry" in
-    module.prop | launcher.png | skip_mount | post-fs-data.sh | service.sh | \
+    module.prop | launcher.png | skip_mount | oplus-policy.sh | \
+      post-fs-data.sh | service.sh | \
       boot-completed.sh | daemon.sh | uninstall.sh | \
       bin/chswapctl | customize.sh | \
       META-INF/com/google/android/update-binary | \
@@ -84,6 +85,7 @@ check_zip_manifest() {
     module.prop \
     launcher.png \
     bin/chswapctl \
+    oplus-policy.sh \
     webroot/config.json \
     webroot/launcher.png \
     customize.sh \
@@ -126,6 +128,7 @@ need go
 need jq
 need node
 need python3
+need xmllint
 need zip
 need unzip
 
@@ -154,16 +157,21 @@ log "Checking script syntax"
 bash -n \
   "$ROOT_DIR/backend/build.sh" \
   "$ROOT_DIR/backend/run-tests.sh" \
+  "$ROOT_DIR/scripts/test-oplus-policy.sh" \
   "$ROOT_DIR/scripts/package-module.sh" \
   "$ROOT_DIR/scripts/release.sh"
 sh -n \
   "$ROOT_DIR/installer/customize.sh" \
   "$ROOT_DIR/installer/META-INF/com/google/android/update-binary" \
+  "$ROOT_DIR/module/oplus-policy.sh" \
   "$ROOT_DIR/module/post-fs-data.sh" \
   "$ROOT_DIR/module/service.sh" \
   "$ROOT_DIR/module/boot-completed.sh" \
   "$ROOT_DIR/module/daemon.sh" \
   "$ROOT_DIR/module/uninstall.sh"
+
+log "Testing Oplus policy generation"
+"$ROOT_DIR/scripts/test-oplus-policy.sh"
 
 log "Checking frontend modules"
 while IFS= read -r -d '' file; do

@@ -8,6 +8,7 @@ export const ROUTES = [
   { id: "zram", label: "ZRAM", icon: "chip" },
   { id: "crystal", label: "策略", icon: "sliders" },
   { id: "pressure", label: "压力", icon: "waves" },
+  { id: "aging", label: "老化", icon: "clock" },
   { id: "maintenance", label: "维护", icon: "stethoscope" },
 ];
 

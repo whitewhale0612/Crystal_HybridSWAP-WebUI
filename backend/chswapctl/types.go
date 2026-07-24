@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 const (
 	apiSchema  = "chswap.api.v1"
 	apiVersion = "1"
@@ -32,6 +34,18 @@ type App struct {
 	// ForceWaitMS bounds how long POST /v1/apps/force-swap waits for the
 	// kernel's asynchronous result; 0 means the default budget.
 	ForceWaitMS int64
+	// commandOutFn is a test seam for Android dumpsys reads. Production uses
+	// App.runCommandOut; keeping it private prevents it from becoming API state.
+	commandOutFn func(timeout time.Duration, name string, args ...string) (string, error)
+
+	// agingForegroundSeen is the last UID set observed in top-app by the
+	// lightweight foreground tracker. It is daemon-local state and is not part
+	// of the persisted policy.
+	agingForegroundSeen    map[int64]bool
+	agingForegroundProbeOK bool
+	// agingLastCycleState suppresses repeated control-plane warnings while a
+	// kernel node remains unavailable across otherwise identical cycles.
+	agingLastCycleState string
 }
 
 type Envelope struct {
@@ -360,6 +374,8 @@ type Profile struct {
 	Swap    SwapProfile    `json:"swap"`
 	Crystal CrystalProfile `json:"crystal"`
 	Policy  PolicyProfile  `json:"policy"`
+	// Aging is optional for backward compatibility; absent means disabled.
+	Aging AgingProfile `json:"aging,omitempty"`
 }
 
 type BootProfile struct {
@@ -401,6 +417,18 @@ type PolicyProfile struct {
 	AvailBuffers *AvailBuffers `json:"avail_buffers"`
 	// erm_avail_buffer_enable = "允许 ERM 覆盖策略"; min/high are NOT managed.
 	ErmAvailBufferEnable *int64 `json:"erm_avail_buffer_enable"`
+}
+
+// AgingProfile controls the optional, conservative app-level aging worker.
+// force_swapout moves all ZRAM-resident pages for one memcg to HybridSwap
+// backing storage, so this feature is disabled by default.
+type AgingProfile struct {
+	Enabled                  bool  `json:"enabled"`
+	IdleAfterSec             int64 `json:"idle_after_sec"`
+	MinZramMB                int64 `json:"min_zram_mb"`
+	PressureAvailableBelowMB int64 `json:"pressure_available_below_mb"`
+	CooldownSec              int64 `json:"cooldown_sec"`
+	MaxAppsPerCycle          int64 `json:"max_apps_per_cycle"`
 }
 
 type AvailBuffers struct {

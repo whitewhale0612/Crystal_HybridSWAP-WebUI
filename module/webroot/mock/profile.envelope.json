@@ -32,6 +32,14 @@
       "zram_wm_ratio": null,
       "avail_buffers": null,
       "erm_avail_buffer_enable": null
+    },
+    "aging": {
+      "enabled": false,
+      "idle_after_sec": 900,
+      "min_zram_mb": 64,
+      "pressure_available_below_mb": 4096,
+      "cooldown_sec": 1800,
+      "max_apps_per_cycle": 1
     }
   },
   "warnings": []

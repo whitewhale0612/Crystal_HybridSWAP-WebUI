@@ -144,21 +144,32 @@ func (a *App) kernelApiMissing(device string) []string {
 // Supported=false with an empty list rather than an error, so the UI can show a
 // friendly "unsupported" state instead of failing.
 func (a *App) appsResult() (AppsResult, []Warning) {
+	result := a.readAppsResult()
+	if !result.Supported {
+		return result, nil
+	}
+	result.LabelsPending = a.fillAppLabels(result.Apps)
+	return result, nil
+}
+
+// readAppsResult is the shared kernel-table reader. Daemon aging deliberately
+// uses this path without display-label resolution: APK parsing and `pm list`
+// are presentation work and must not run in the 60-second control loop.
+func (a *App) readAppsResult() AppsResult {
 	empty := AppsResult{Supported: false, Count: 0, Apps: []AppMemInfo{}}
 	memcg := a.memcgRoot()
 	if memcg == "" {
-		return empty, nil
+		return empty
 	}
 	path := filepath.Join(memcg, "memory.total_info_per_app")
 	if !a.exists(path) {
-		return empty, nil
+		return empty
 	}
 	apps := parseTotalInfoPerApp(readTrim(path))
-	pending := a.fillAppLabels(apps)
 	forceSwap := a.exists(filepath.Join(memcg, "memory.force_swapout")) &&
 		a.exists(filepath.Join(memcg, "memory.force_swapin"))
 	return AppsResult{Supported: true, Count: len(apps), Apps: apps,
-		LabelsPending: pending, ForceSwapSupported: forceSwap}, nil
+		ForceSwapSupported: forceSwap}
 }
 
 // parseTotalInfoPerApp parses the whitespace-delimited total_info_per_app table

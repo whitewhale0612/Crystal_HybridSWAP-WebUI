@@ -695,20 +695,6 @@ func i64p(v int64) *int64 { return &v }
 
 func strp(v string) *string { return &v }
 
-func derefI64(p *int64, def int64) int64 {
-	if p != nil {
-		return *p
-	}
-	return def
-}
-
-func derefStr(p *string, def string) string {
-	if p != nil {
-		return *p
-	}
-	return def
-}
-
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
