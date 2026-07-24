@@ -1,5 +1,9 @@
 # KernelSU Module Packaging
 
+> This module is not standalone. It requires the matching custom
+> `crystal_hybridswap` kernel; on stock or incompatible kernels it is
+> intentionally fail-closed and has no memory-management effect.
+
 Packaged files:
 
 ```text

@@ -3,6 +3,16 @@
 This project is the KernelSU/WebUI companion module for the
 `crystal_hybridswap` kernel driver.
 
+## Compatibility Notice
+
+This module is **not standalone**. Installing it without the matching custom
+`crystal_hybridswap` kernel provides no memory-management effect: stock kernels
+and kernels without the Crystal stage-3 ZRAM/memcg ABI are detected as
+unsupported, and takeover/aging operations are fail-closed. Use this module
+only together with the corresponding custom kernel build that exposes the
+required Crystal Hybridswap management nodes, including the per-memcg
+`memory.force_swapout` interface.
+
 The module is designed as a full-control ZRAM owner:
 
 - initialize ZRAM before vendor scripts can take over;
