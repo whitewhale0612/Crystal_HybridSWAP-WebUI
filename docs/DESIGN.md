@@ -174,7 +174,12 @@ not increase that streak. This reuses
 `memory.force_swapout`, so it moves a memcg's existing ZRAM pages to HybridSwap
 backing storage rather than doing page-level LRU aging.
 
-Daemon logging is bounded independently of the aging policy: identical
+When ZMS backing capacity falls to 2% free space, aging enters a global fixed
+30-minute storage fuse; this is intentionally separate from per-app cooldowns.
+The fuse is reopened only after capacity reaches 5% free space for two
+consecutive aging cycles. An actual `ENOSPC` force-swap result opens the same
+fuse immediately, without incrementing the app failure streak. Daemon logging
+is bounded independently of the aging policy: identical
 messages are suppressed for 15 minutes with a repetition count emitted when
 the message resumes, and `daemon.log` rotates at 512 KiB, retaining one `.1`
 backup.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ func agingFixture(t *testing.T, fg string) (*App, string) {
 		"hybridswap_core_enable": "reclaim_in enable\n",
 		"hybridswap_swapd_pause": "0\n", "hybridswap_quota_day": "86400\n",
 		"hybridswap_crystal_stat": "writeback_quota_limit_bytes 1073741824\nwriteback_quota_used_bytes 0\nwriteback_quota_remaining_bytes 1073741824\n",
+		"zms_stat":                "enabled: 1\nnr_blocks: 100\nused_blocks: 0\n",
 	} {
 		if err := writeFile(filepath.Join(zdir, node), data); err != nil {
 			t.Fatal(err)
@@ -63,6 +65,59 @@ func enabledAgingProfile() *Profile {
 		PressureAvailableBelowMB: 4096, CooldownSec: 1800, MaxAppsPerCycle: 1,
 	}
 	return p
+}
+
+func TestAgingStorageGateBlocksLowCapacity(t *testing.T) {
+	app, dir := agingFixture(t, "99999")
+	if err := writeFile(filepath.Join(app.SysRoot, "block/zram0/zms_stat"),
+		"enabled: 1\nnr_blocks: 100\nused_blocks: 99\n"); err != nil {
+		t.Fatal(err)
+	}
+	state := agingState{Version: agingStateVersion, Apps: map[string]agingAppState{}}
+	logs := []string{}
+	if app.agingStorageGate(&state, "zram0", 1000, func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}) {
+		t.Fatal("low backing capacity was allowed")
+	}
+	if state.Storage.BlockedUntilUnix != 1000+int64(agingStorageCooldown/time.Second) || state.Storage.Reason != "capacity_low" {
+		t.Fatalf("unexpected storage fuse state: %+v", state.Storage)
+	}
+	if len(logs) != 1 || !strings.Contains(logs[0], "storage blocked") {
+		t.Fatalf("unexpected storage fuse log: %v", logs)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgingStorageGateRequiresTwoRecoverySamples(t *testing.T) {
+	app, _ := agingFixture(t, "99999")
+	path := filepath.Join(app.SysRoot, "block/zram0/zms_stat")
+	state := agingState{Version: agingStateVersion, Storage: agingStorageState{
+		BlockedUntilUnix: 900,
+		Reason:           "enospc",
+	}}
+	if err := writeFile(path, "enabled: 1\nnr_blocks: 100\nused_blocks: 94\n"); err != nil {
+		t.Fatal(err)
+	}
+	logs := []string{}
+	if app.agingStorageGate(&state, "zram0", 1000, func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}) {
+		t.Fatal("first recovery sample resumed aging")
+	}
+	if state.Storage.RecoverySamples != 1 || state.Storage.Reason != "recovering" {
+		t.Fatalf("unexpected first recovery state: %+v", state.Storage)
+	}
+	if app.agingStorageGate(&state, "zram0", 1060, func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}) == false {
+		t.Fatal("second recovery sample did not resume aging")
+	}
+	if state.Storage != (agingStorageState{}) {
+		t.Fatalf("storage fuse was not cleared: %+v", state.Storage)
+	}
 }
 
 func TestAgingSkipsForegroundApp(t *testing.T) {

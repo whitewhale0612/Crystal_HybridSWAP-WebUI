@@ -18,18 +18,38 @@ import (
 )
 
 const (
-	agingStateVersion       = 2
-	agingRetryBackoff       = 5 * time.Minute
-	agingFailureBackoffMax  = 6 * time.Hour
-	agingRearmAfterFailures = 3
-	agingStateMaxApps       = 512
-	agingForegroundPoll     = 5 * time.Second
-	agingFullCycle          = 60 * time.Second
+	agingStateVersion          = 3
+	agingRetryBackoff          = 5 * time.Minute
+	agingFailureBackoffMax     = 6 * time.Hour
+	agingRearmAfterFailures    = 3
+	agingStateMaxApps          = 512
+	agingForegroundPoll        = 5 * time.Second
+	agingFullCycle             = 60 * time.Second
+	agingStorageCooldown       = 30 * time.Minute
+	agingStorageTriggerPct     = int64(2)
+	agingStorageRecoverPct     = int64(5)
+	agingStorageRecoverSamples = 2
 )
 
 type agingState struct {
 	Version int                      `json:"version"`
 	Apps    map[string]agingAppState `json:"apps"`
+	Storage agingStorageState        `json:"storage,omitempty"`
+}
+
+type agingStorageState struct {
+	BlockedUntilUnix int64  `json:"blocked_until_unix,omitempty"`
+	RecoverySamples  int    `json:"recovery_samples,omitempty"`
+	LastFreeBlocks   int64  `json:"last_free_blocks,omitempty"`
+	LastNrBlocks     int64  `json:"last_nr_blocks,omitempty"`
+	Reason           string `json:"reason,omitempty"`
+}
+
+type agingStorageCapacity struct {
+	Known      bool
+	NrBlocks   int64
+	UsedBlocks int64
+	FreeBlocks int64
 }
 
 type agingAppState struct {
@@ -174,6 +194,105 @@ func (a *App) saveAgingState(state agingState) {
 	if err == nil {
 		_ = atomicWrite(a.agingStatePath(), append(data, '\n'), 0600)
 	}
+}
+
+func (a *App) agingStorageCapacity(device string) agingStorageCapacity {
+	if device == "" {
+		device = a.firstZram()
+		if device == "" {
+			device = "zram0"
+		}
+	}
+	stats := parseKeyValue(readTrim(a.sys(filepath.Join("block", device, "zms_stat"))), ":")
+	nr := parseIntDefault(stats["nr_blocks"], 0)
+	used := parseIntDefault(stats["used_blocks"], -1)
+	if nr <= 0 || used < 0 {
+		return agingStorageCapacity{}
+	}
+	free := nr - used
+	if free < 0 {
+		free = 0
+	}
+	return agingStorageCapacity{
+		Known: true, NrBlocks: nr, UsedBlocks: used, FreeBlocks: free,
+	}
+}
+
+func agingStoragePercent(blocks, total int64) int64 {
+	if total <= 0 || blocks <= 0 {
+		return 0
+	}
+	return blocks * 100 / total
+}
+
+func agingStorageLow(capacity agingStorageCapacity) bool {
+	return capacity.Known && agingStoragePercent(capacity.FreeBlocks, capacity.NrBlocks) <= agingStorageTriggerPct
+}
+
+func agingStorageRecovered(capacity agingStorageCapacity) bool {
+	return capacity.Known && agingStoragePercent(capacity.FreeBlocks, capacity.NrBlocks) >= agingStorageRecoverPct
+}
+
+func (a *App) agingStorageBlock(state *agingState, now int64, capacity agingStorageCapacity, reason string) {
+	state.Storage.BlockedUntilUnix = now + int64(agingStorageCooldown/time.Second)
+	state.Storage.RecoverySamples = 0
+	state.Storage.Reason = reason
+	if capacity.Known {
+		state.Storage.LastFreeBlocks = capacity.FreeBlocks
+		state.Storage.LastNrBlocks = capacity.NrBlocks
+	}
+}
+
+// agingStorageGate applies a fixed global backing-store fuse. A low-capacity
+// trigger uses a 2% threshold; recovery requires 5% free space for two full
+// aging cycles, providing hysteresis without an app-by-app retry storm.
+func (a *App) agingStorageGate(state *agingState, device string, now int64, logln func(string, ...any)) bool {
+	capacity := a.agingStorageCapacity(device)
+	if state.Storage.BlockedUntilUnix > now {
+		return false
+	}
+
+	if state.Storage.BlockedUntilUnix > 0 {
+		if !capacity.Known {
+			a.agingStorageBlock(state, now, capacity, "capacity_unavailable")
+			a.saveAgingState(*state)
+			logln("aging: storage still blocked reason=capacity_unavailable retry_sec=%d", int64(agingStorageCooldown/time.Second))
+			return false
+		}
+		state.Storage.LastFreeBlocks = capacity.FreeBlocks
+		state.Storage.LastNrBlocks = capacity.NrBlocks
+		if !agingStorageRecovered(capacity) {
+			a.agingStorageBlock(state, now, capacity, "capacity_low")
+			a.saveAgingState(*state)
+			logln("aging: storage still full free_blocks=%d nr_blocks=%d retry_sec=%d",
+				capacity.FreeBlocks, capacity.NrBlocks, int64(agingStorageCooldown/time.Second))
+			return false
+		}
+		state.Storage.RecoverySamples++
+		if state.Storage.RecoverySamples < agingStorageRecoverSamples {
+			state.Storage.BlockedUntilUnix = now + int64(agingFullCycle/time.Second)
+			state.Storage.Reason = "recovering"
+			a.saveAgingState(*state)
+			logln("aging: storage recovery sample=%d/%d free_blocks=%d nr_blocks=%d",
+				state.Storage.RecoverySamples, agingStorageRecoverSamples,
+				capacity.FreeBlocks, capacity.NrBlocks)
+			return false
+		}
+		state.Storage = agingStorageState{}
+		a.saveAgingState(*state)
+		logln("aging: storage recovered; aging resumed free_blocks=%d nr_blocks=%d",
+			capacity.FreeBlocks, capacity.NrBlocks)
+		return true
+	}
+
+	if agingStorageLow(capacity) {
+		a.agingStorageBlock(state, now, capacity, "capacity_low")
+		a.saveAgingState(*state)
+		logln("aging: storage blocked reason=capacity_low free_blocks=%d nr_blocks=%d retry_sec=%d",
+			capacity.FreeBlocks, capacity.NrBlocks, int64(agingStorageCooldown/time.Second))
+		return false
+	}
+	return true
 }
 
 func agingKey(app AppMemInfo) string {
@@ -700,6 +819,14 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 	if p == nil || !p.Aging.Enabled {
 		return
 	}
+	now := time.Now().Unix()
+	state := a.loadAgingState()
+	if state.Apps == nil {
+		state.Apps = map[string]agingAppState{}
+	}
+	if !a.agingStorageGate(&state, p.Zram.Device, now, logln) {
+		return
+	}
 	fgUIDs, ok := a.foregroundUIDs()
 	if !ok {
 		if a.agingLastCycleState != "foreground_unavailable" {
@@ -720,11 +847,6 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 		return
 	}
 	a.agingLastCycleState = ""
-	now := time.Now().Unix()
-	state := a.loadAgingState()
-	if state.Apps == nil {
-		state.Apps = map[string]agingAppState{}
-	}
 	seen := map[string]bool{}
 	stats := agingCycleStats{}
 	candidates := make([]agingCandidate, 0, len(result.Apps))
@@ -880,8 +1002,14 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 		entry.LastBytes = force.Bytes
 		if force.Result == "storage_full" {
 			// Backing-store exhaustion is global. Do not grow this app's
-			// failure streak or require ZRAM growth before retrying it.
-			entry.CooldownUntilUnix = now + int64(agingRetryBackoff/time.Second)
+			// failure streak; establish the persistent global fuse instead.
+			capacity := a.agingStorageCapacity(p.Zram.Device)
+			a.agingStorageBlock(&state, now, capacity, "enospc")
+			state.Apps[agingKey(candidate.App)] = entry
+			a.saveAgingState(state)
+			logln("aging: storage blocked reason=enospc free_blocks=%d nr_blocks=%d retry_sec=%d",
+				capacity.FreeBlocks, capacity.NrBlocks, int64(agingStorageCooldown/time.Second))
+			break
 		} else if force.Result == "ok" && force.Bytes > 0 {
 			entry.Failures = 0
 			entry.CooldownUntilUnix = now + p.Aging.CooldownSec

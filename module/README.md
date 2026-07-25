@@ -82,7 +82,10 @@ foreground/protected, cooldown and rearm counts); actual force-swap successes
 and failures remain detailed. Repeated identical daemon messages are held for
 15 minutes and summarized on the next emission. `data/logs/daemon.log` is
 rotated at 512 KiB to `.1`. State and cooldowns are stored in
-`data/state/aging.json`.
+`data/state/aging.json`. When ZMS backing capacity reaches 2% free space, aging
+enters a global 30-minute fuse and stops all force-swapout attempts. It resumes
+only after capacity reaches 5% free space for two consecutive aging cycles;
+`ENOSPC` from any force-swapout also opens this fuse immediately.
 
 Scripts must not implement their own sysfs policy. They should call
 `bin/chswapctl api ...` or backend internal commands.
