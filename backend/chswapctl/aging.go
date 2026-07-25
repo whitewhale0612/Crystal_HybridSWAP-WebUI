@@ -532,13 +532,36 @@ func agingProtectedName(name string) bool {
 	}
 	for _, part := range []string{
 		"systemui", "launcher", "inputmethod", "keyboard", "telecom",
-		"dialer", "phone", "audioserver", "surfaceflinger",
+		"dialer", "audioserver", "surfaceflinger",
 	} {
 		if strings.Contains(lower, part) {
 			return true
 		}
 	}
+	return agingNameHasToken(lower, "phone")
+}
+
+func agingNameHasToken(name, token string) bool {
+	for offset := 0; offset < len(name); {
+		relative := strings.Index(name[offset:], token)
+		if relative < 0 {
+			return false
+		}
+		start := offset + relative
+		end := start + len(token)
+		before := start == 0 || !agingASCIIAlphaNumeric(name[start-1])
+		after := end == len(name) || !agingASCIIAlphaNumeric(name[end])
+		if before && after {
+			return true
+		}
+		offset = start + 1
+	}
 	return false
+}
+
+func agingASCIIAlphaNumeric(value byte) bool {
+	return value >= 'a' && value <= 'z' ||
+		value >= '0' && value <= '9'
 }
 
 const (

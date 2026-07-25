@@ -67,6 +67,28 @@ func enabledAgingProfile() *Profile {
 	return p
 }
 
+func TestAgingProtectedNamePhoneToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		protected bool
+	}{
+		{name: "android", protected: true},
+		{name: "com.android.phone", protected: true},
+		{name: "com.android.phone.auto_generated_characteristics_rro", protected: true},
+		{name: "com.vendor.phone-service", protected: true},
+		{name: "com.android.systemui", protected: true},
+		{name: "com.sohu.inputmethod.sogouoem", protected: true},
+		{name: "com.eg.android.AlipayGphone", protected: false},
+		{name: "com.example.headphone", protected: false},
+		{name: "com.example.app", protected: false},
+	}
+	for _, test := range tests {
+		if got := agingProtectedName(test.name); got != test.protected {
+			t.Errorf("agingProtectedName(%q) = %t, want %t", test.name, got, test.protected)
+		}
+	}
+}
+
 func TestAgingStorageGateBlocksLowCapacity(t *testing.T) {
 	app, dir := agingFixture(t, "99999")
 	if err := writeFile(filepath.Join(app.SysRoot, "block/zram0/zms_stat"),
