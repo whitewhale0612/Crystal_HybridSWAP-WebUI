@@ -46,6 +46,9 @@ type App struct {
 	// agingLastCycleState suppresses repeated control-plane warnings while a
 	// kernel node remains unavailable across otherwise identical cycles.
 	agingLastCycleState string
+	// agingLastGameState suppresses repeated game-foreground messages while the
+	// vendor game probe remains active or temporarily unreadable.
+	agingLastGameState string
 }
 
 type Envelope struct {

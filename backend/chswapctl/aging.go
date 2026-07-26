@@ -525,6 +525,62 @@ func (a *App) memAvailableBytes() (int64, bool) {
 	return 0, false
 }
 
+// agingGamePID reads the vendor game foreground probe. Devices without this
+// optional node keep the previous aging behavior; an unreadable existing node
+// is treated conservatively and holds automatic writeback for that cycle.
+func (a *App) agingGamePID() (pid int64, supported bool, valid bool) {
+	path := a.proc("game_opt/game_pid")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return -1, false, true
+		}
+		return -1, true, false
+	}
+	for _, field := range strings.Fields(string(raw)) {
+		key, value, found := strings.Cut(field, "=")
+		if !found || key != "game_pid" {
+			continue
+		}
+		pid, err = strconv.ParseInt(value, 10, 64)
+		return pid, true, err == nil
+	}
+	return -1, true, false
+}
+
+// agingGameGate is a volatile cycle fuse. It deliberately does not persist
+// state because game foreground status can change at any time; the next 60s
+// cycle should resume aging immediately after game_pid returns to -1.
+func (a *App) agingGameGate(logln func(string, ...any)) bool {
+	pid, supported, valid := a.agingGamePID()
+	if !supported {
+		if a.agingLastGameState != "" {
+			logln("aging: game probe unavailable; aging resumed")
+			a.agingLastGameState = ""
+		}
+		return true
+	}
+	if !valid {
+		if a.agingLastGameState != "unavailable" {
+			logln("aging: game probe unreadable; hold aging state")
+			a.agingLastGameState = "unavailable"
+		}
+		return false
+	}
+	if pid != -1 {
+		if a.agingLastGameState != "active" {
+			logln("aging: game foreground pid=%d; automatic writeback paused", pid)
+			a.agingLastGameState = "active"
+		}
+		return false
+	}
+	if a.agingLastGameState != "" {
+		logln("aging: game foreground ended; aging resumed")
+		a.agingLastGameState = ""
+	}
+	return true
+}
+
 func agingProtectedName(name string) bool {
 	lower := strings.ToLower(name)
 	if lower == "android" {
@@ -847,6 +903,9 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 	if state.Apps == nil {
 		state.Apps = map[string]agingAppState{}
 	}
+	if !a.agingGameGate(logln) {
+		return
+	}
 	if !a.agingStorageGate(&state, p.Zram.Device, now, logln) {
 		return
 	}
@@ -986,6 +1045,9 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 	}
 	for i := 0; i < limit; i++ {
 		candidate := candidates[i]
+		if !a.agingGameGate(logln) {
+			break
+		}
 		// Recheck immediately before locking and again after taking the lock.
 		current, valid := a.foregroundUIDs()
 		if !valid || current[candidate.App.UID] {
@@ -1001,6 +1063,10 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 		if !valid || current[candidate.App.UID] {
 			unlock()
 			logln("aging: foreground changed while locking; stop cycle")
+			break
+		}
+		if !a.agingGameGate(logln) {
+			unlock()
 			break
 		}
 		stats.attempted++

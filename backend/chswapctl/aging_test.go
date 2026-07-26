@@ -113,6 +113,79 @@ func TestAgingStorageGateBlocksLowCapacity(t *testing.T) {
 	}
 }
 
+func TestAgingGameGateParsesVendorProbe(t *testing.T) {
+	app, _ := agingFixture(t, "99999")
+	path := filepath.Join(app.ProcRoot, "game_opt/game_pid")
+	if err := mkdirAll(filepath.Dir(path)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(path, "game_pid=23147 child_num=54 ui_assist_num=0\n"); err != nil {
+		t.Fatal(err)
+	}
+	logs := []string{}
+	if app.agingGameGate(func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}) {
+		t.Fatal("active game did not pause aging")
+	}
+	if len(logs) != 1 || !strings.Contains(logs[0], "pid=23147") {
+		t.Fatalf("unexpected active-game log: %v", logs)
+	}
+	if err := writeFile(path, "game_pid=-1 child_num=0 ui_assist_num=0\n"); err != nil {
+		t.Fatal(err)
+	}
+	if !app.agingGameGate(func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}) {
+		t.Fatal("game probe did not resume aging after game exit")
+	}
+	if len(logs) != 2 || !strings.Contains(logs[1], "ended") {
+		t.Fatalf("unexpected game-resume log: %v", logs)
+	}
+	if err := writeFile(path, "game_pid=unknown\n"); err != nil {
+		t.Fatal(err)
+	}
+	if app.agingGameGate(func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}) {
+		t.Fatal("malformed game probe did not hold aging")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if !app.agingGameGate(func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}) {
+		t.Fatal("missing optional game probe did not preserve aging")
+	}
+}
+
+func TestAgingCycleSkipsActiveGame(t *testing.T) {
+	app, dir := agingFixture(t, "99999")
+	path := filepath.Join(app.ProcRoot, "game_opt/game_pid")
+	if err := mkdirAll(filepath.Dir(path)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(path, "game_pid=23147\n"); err != nil {
+		t.Fatal(err)
+	}
+	state := agingState{Version: agingStateVersion, Apps: map[string]agingAppState{
+		"com.example.app|10234": {LastForegroundUnix: time.Now().Add(-time.Hour).Unix()},
+	}}
+	raw, _ := json.Marshal(state)
+	if err := mkdirAll(filepath.Dir(app.agingStatePath())); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(app.agingStatePath(), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	app.agingCycle(enabledAgingProfile(), func(string, ...any) {})
+	got, _ := os.ReadFile(filepath.Join(dir, "memory.force_swapout"))
+	if strings.TrimSpace(string(got)) != "0" {
+		t.Fatalf("active game did not block force_swapout: %q", got)
+	}
+}
+
 func TestAgingStorageGateRequiresTwoRecoverySamples(t *testing.T) {
 	app, _ := agingFixture(t, "99999")
 	path := filepath.Join(app.SysRoot, "block/zram0/zms_stat")
