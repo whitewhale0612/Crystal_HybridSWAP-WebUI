@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	agingStateVersion          = 3
+	agingStateVersion          = 4
 	agingRetryBackoff          = 5 * time.Minute
 	agingFailureBackoffMax     = 6 * time.Hour
 	agingRearmAfterFailures    = 3
@@ -32,9 +32,17 @@ const (
 )
 
 type agingState struct {
-	Version int                      `json:"version"`
-	Apps    map[string]agingAppState `json:"apps"`
-	Storage agingStorageState        `json:"storage,omitempty"`
+	Version int                       `json:"version"`
+	Apps    map[string]agingAppState  `json:"apps"`
+	Games   map[string]agingGameState `json:"games,omitempty"`
+	Storage agingStorageState         `json:"storage,omitempty"`
+}
+
+type agingGameState struct {
+	Package      string `json:"package"`
+	UID          int64  `json:"uid"`
+	LastSeenUnix int64  `json:"last_seen_unix"`
+	LastPID      int64  `json:"last_pid,omitempty"`
 }
 
 type agingStorageState struct {
@@ -72,6 +80,64 @@ type agingCandidate struct {
 	ZramBytes         int64
 	HasWrittenBack    bool
 	WritebackRatioPPM int64
+}
+
+func agingGamePackage(cmdline string) string {
+	fields := strings.Fields(strings.ReplaceAll(cmdline, "\x00", " "))
+	if len(fields) == 0 {
+		return ""
+	}
+	name := fields[0]
+	if strings.HasPrefix(name, "/") {
+		return ""
+	}
+	if i := strings.IndexByte(name, ':'); i > 0 {
+		name = name[:i]
+	}
+	if strings.Contains(name, "/") {
+		return ""
+	}
+	if !strings.Contains(name, ".") {
+		return ""
+	}
+	return name
+}
+
+// agingGameProcessIdentity resolves a game probe PID to a regular app UID and
+// package. The short parent walk handles a vendor probe that points at an
+// isolated child instead of the game's mother process.
+func (a *App) agingGameProcessIdentity(pid int64) (string, int64, bool) {
+	for depth := 0; depth < 4 && pid > 0; depth++ {
+		status := readTrim(a.proc(filepath.Join(strconv.FormatInt(pid, 10), "status")))
+		if status == "" {
+			return "", 0, false
+		}
+		uid := int64(-1)
+		ppid := int64(-1)
+		for _, line := range strings.Split(status, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			switch fields[0] {
+			case "Uid:":
+				uid = parseIntDefault(fields[1], -1)
+			case "PPid:":
+				ppid = parseIntDefault(fields[1], -1)
+			}
+		}
+		cmdline := readTrim(a.proc(filepath.Join(strconv.FormatInt(pid, 10), "cmdline")))
+		if uid >= 10000 && !agingIsolatedTask(uid, cmdline) {
+			if pkg := agingGamePackage(cmdline); pkg != "" {
+				return pkg, uid, true
+			}
+		}
+		if ppid <= 0 || ppid == pid {
+			break
+		}
+		pid = ppid
+	}
+	return "", 0, false
 }
 
 func agingWritebackRatioPPM(app AppMemInfo) int64 {
@@ -173,13 +239,24 @@ func (a *App) agingStatePath() string {
 }
 
 func (a *App) loadAgingState() agingState {
-	state := agingState{Version: agingStateVersion, Apps: map[string]agingAppState{}}
+	state := agingState{
+		Version: agingStateVersion,
+		Apps:    map[string]agingAppState{},
+		Games:   map[string]agingGameState{},
+	}
 	raw, err := os.ReadFile(a.agingStatePath())
 	if err != nil || len(raw) == 0 {
 		return state
 	}
 	if json.Unmarshal(raw, &state) != nil || state.Apps == nil {
-		return agingState{Version: agingStateVersion, Apps: map[string]agingAppState{}}
+		return agingState{
+			Version: agingStateVersion,
+			Apps:    map[string]agingAppState{},
+			Games:   map[string]agingGameState{},
+		}
+	}
+	if state.Games == nil {
+		state.Games = map[string]agingGameState{}
 	}
 	state.Version = agingStateVersion
 	return state
@@ -188,6 +265,9 @@ func (a *App) loadAgingState() agingState {
 func (a *App) saveAgingState(state agingState) {
 	if state.Apps == nil {
 		state.Apps = map[string]agingAppState{}
+	}
+	if state.Games == nil {
+		state.Games = map[string]agingGameState{}
 	}
 	_ = a.ensureDirs()
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -448,8 +528,9 @@ func cloneUIDSet(in map[int64]bool) map[int64]bool {
 // only the kernel top-app PID set and the corresponding /proc status files, so
 // a short foreground visit can refresh the idle timer without repeating the
 // app table, ZRAM, memcg, or force-swapout work. The state file is written only
-// when a UID enters top-app, not on every poll.
+// when a UID enters top-app or a game PID changes, not on every poll.
 func (a *App) agingForegroundRefresh(logln func(string, ...any)) {
+	a.agingGameObserve()
 	foreground, ok := a.topAppUIDs()
 	if !ok {
 		if a.agingForegroundProbeOK {
@@ -579,6 +660,54 @@ func (a *App) agingGameGate(logln func(string, ...any)) bool {
 		a.agingLastGameState = ""
 	}
 	return true
+}
+
+// agingGameObserve records a game identity only when the vendor PID changes.
+// It runs alongside the existing five-second foreground sampler, so a game
+// opened and backgrounded between 60-second aging cycles is still protected
+// without adding a process scan or a shell command.
+func (a *App) agingGameObserve() {
+	pid, supported, valid := a.agingGamePID()
+	if !supported || !valid || pid == -1 {
+		a.agingLastObservedGamePID = -1
+		return
+	}
+	if a.agingLastObservedGamePID == pid {
+		return
+	}
+	pkg, uid, ok := a.agingGameProcessIdentity(pid)
+	if !ok {
+		return
+	}
+	a.agingLastObservedGamePID = pid
+	state := a.loadAgingState()
+	if state.Games == nil {
+		state.Games = map[string]agingGameState{}
+	}
+	key := fmt.Sprintf("%s|%d", pkg, uid)
+	state.Games[key] = agingGameState{
+		Package:      pkg,
+		UID:          uid,
+		LastSeenUnix: time.Now().Unix(),
+		LastPID:      pid,
+	}
+	a.saveAgingState(state)
+}
+
+// agingGameProtected matches by UID and tolerates the kernel's truncated
+// memcg name. The package check prevents a reused UID from inheriting a stale
+// game exemption when the current memcg belongs to a different package.
+func agingGameProtected(state agingState, app AppMemInfo) bool {
+	for _, game := range state.Games {
+		if game.UID != app.UID || game.Package == "" || app.Name == "" {
+			continue
+		}
+		if game.Package == app.Name ||
+			(len(app.Name) == forceSwapMaxNameLen && strings.HasPrefix(game.Package, app.Name)) {
+			return true
+		}
+	}
+	return false
 }
 
 func agingProtectedName(name string) bool {
@@ -889,9 +1018,9 @@ func (a *App) agingRuntimeReady(p *Profile) bool {
 }
 
 type agingCycleStats struct {
-	apps, unresolved, mixedResolved, foreground, protectedName int
-	critical, sensitive, belowMin, cooldown, rearm             int
-	candidates, attempted                                      int
+	apps, unresolved, mixedResolved, foreground, protectedName, gameProtected int
+	critical, sensitive, belowMin, cooldown, rearm                            int
+	candidates, attempted                                                     int
 }
 
 func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
@@ -987,6 +1116,10 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 			stats.protectedName++
 			continue
 		}
+		if agingGameProtected(state, app) {
+			stats.gameProtected++
+			continue
+		}
 		processLevel := a.appProtectedProcessLevelInDirs(app, dirs)
 		if processLevel == agingProtectedProcessCritical {
 			stats.critical++
@@ -1028,9 +1161,9 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 	sortAgingCandidates(candidates)
 	stats.candidates = len(candidates)
 	emitSummary := func() {
-		logln("aging: cycle apps=%d unresolved=%d mixed=%d foreground=%d protected=%d critical=%d sensitive=%d below_min=%d cooldown=%d rearm=%d candidates=%d attempted=%d",
+		logln("aging: cycle apps=%d unresolved=%d mixed=%d foreground=%d protected=%d game_protected=%d critical=%d sensitive=%d below_min=%d cooldown=%d rearm=%d candidates=%d attempted=%d",
 			stats.apps, stats.unresolved, stats.mixedResolved, stats.foreground,
-			stats.protectedName, stats.critical, stats.sensitive, stats.belowMin,
+			stats.protectedName, stats.gameProtected, stats.critical, stats.sensitive, stats.belowMin,
 			stats.cooldown, stats.rearm, stats.candidates, stats.attempted)
 	}
 	avail, pressureOK := a.memAvailableBytes()

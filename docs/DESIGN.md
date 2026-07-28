@@ -164,10 +164,15 @@ ActivityManager demotes the real app processes. The daemon emits one compact
 per-cycle summary of filter counts instead of logging every skipped app.
 When `/proc/game_opt/game_pid` is available, a value other than `-1` pauses the
 automatic aging cycle before candidate scanning and is checked again immediately
-before `force_swapout`; `game_pid=-1` resumes on the next cycle. A missing node
-keeps compatibility with devices without this vendor game probe, while an
-unreadable or malformed node holds automatic aging for that cycle. Manual
-`/v1/apps/force-swap` requests are unaffected.
+before `force_swapout`. The five-second foreground sampler resolves a newly
+observed game PID through `/proc/PID/status` and `cmdline`, follows an isolated
+child to its regular parent when necessary, and persists the package plus UID in
+`aging.json`. Known games remain excluded from automatic candidates after
+`game_pid` returns to `-1`; non-game aging resumes on the next cycle. Repeated
+samples of the same PID do not reread process identity or rewrite state. A
+missing node keeps compatibility with devices without this vendor game probe,
+while an unreadable or malformed node holds automatic aging for that cycle.
+Manual `/v1/apps/force-swap` requests are unaffected.
 Successful force-swapout enters the configured cooldown. Kernel errors and
 `ENODATA` results persist a
 failure streak and back off at 5 minutes, 15 minutes, 30 minutes, 1 hour, 2

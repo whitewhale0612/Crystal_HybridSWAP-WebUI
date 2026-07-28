@@ -88,8 +88,11 @@ only after capacity reaches 5% free space for two consecutive aging cycles;
 `ENOSPC` from any force-swapout also opens this fuse immediately.
 On devices exposing `/proc/game_opt/game_pid`, any `game_pid` other than `-1`
 pauses automatic aging before scanning and is rechecked before triggering a
-writeback. `game_pid=-1` resumes aging on the next cycle. A missing node is
-treated as an unsupported optional probe; an unreadable or malformed node holds
+writeback. The five-second foreground sampler records a newly observed game's
+package and UID once; that app remains excluded from automatic aging after it
+moves to the background, while other apps resume when `game_pid=-1`. The cycle
+summary reports these exclusions as `game_protected`. A missing node is treated
+as an unsupported optional probe; an unreadable or malformed node holds
 automatic aging for that cycle. Manual force-swap requests remain available.
 
 Scripts must not implement their own sysfs policy. They should call

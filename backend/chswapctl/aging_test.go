@@ -186,6 +186,103 @@ func TestAgingCycleSkipsActiveGame(t *testing.T) {
 	}
 }
 
+func TestAgingGameObservationProtectsBackgroundGame(t *testing.T) {
+	app, dir := agingFixture(t, "99999")
+	gamePIDPath := filepath.Join(app.ProcRoot, "game_opt/game_pid")
+	if err := mkdirAll(filepath.Dir(gamePIDPath)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(gamePIDPath, "game_pid=23147\n"); err != nil {
+		t.Fatal(err)
+	}
+	for path, data := range map[string]string{
+		filepath.Join(app.ProcRoot, "23147/status"):  "Name:\tmain\nPPid:\t1\nUid:\t10234\t10234\t10234\t10234\n",
+		filepath.Join(app.ProcRoot, "23147/cmdline"): "com.example.app\x00",
+	} {
+		if err := mkdirAll(filepath.Dir(path)); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeFile(path, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app.agingGameObserve()
+	state := app.loadAgingState()
+	game, ok := state.Games["com.example.app|10234"]
+	if !ok || game.UID != 10234 || game.LastPID != 23147 {
+		t.Fatalf("game identity was not persisted: %+v", state.Games)
+	}
+
+	if err := writeFile(gamePIDPath, "game_pid=-1\n"); err != nil {
+		t.Fatal(err)
+	}
+	app.agingGameObserve()
+	state.Apps["com.example.app|10234"] = agingAppState{
+		LastForegroundUnix: time.Now().Add(-time.Hour).Unix(),
+	}
+	raw, _ := json.Marshal(state)
+	if err := writeFile(app.agingStatePath(), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	app.agingCycle(enabledAgingProfile(), func(string, ...any) {})
+	got, _ := os.ReadFile(filepath.Join(dir, "memory.force_swapout"))
+	if strings.TrimSpace(string(got)) != "0" {
+		t.Fatalf("background game was written back: %q", got)
+	}
+
+	state = app.loadAgingState()
+	state.Games = map[string]agingGameState{}
+	raw, _ = json.Marshal(state)
+	if err := writeFile(app.agingStatePath(), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	app.agingCycle(enabledAgingProfile(), func(string, ...any) {})
+	got, _ = os.ReadFile(filepath.Join(dir, "memory.force_swapout"))
+	if strings.TrimSpace(string(got)) != "1" {
+		t.Fatalf("non-game app was not eligible after game exemption removal: %q", got)
+	}
+}
+
+func TestAgingGameProtectionRequiresPackageAndUID(t *testing.T) {
+	const gamePackage = "com.example.verylonggamename.more"
+	state := agingState{Games: map[string]agingGameState{
+		gamePackage + "|10234": {
+			Package: gamePackage,
+			UID:     10234,
+		},
+	}}
+	if !agingGameProtected(state, AppMemInfo{Name: gamePackage[:forceSwapMaxNameLen], UID: 10234}) {
+		t.Fatal("truncated game memcg name was not protected")
+	}
+	if agingGameProtected(state, AppMemInfo{Name: "com.example.other", UID: 10234}) {
+		t.Fatal("reused UID with a different package inherited game protection")
+	}
+	if agingGameProtected(state, AppMemInfo{Name: gamePackage, UID: 10235}) {
+		t.Fatal("matching package with a different UID inherited game protection")
+	}
+}
+
+func TestAgingGameIdentityWalksFromIsolatedChild(t *testing.T) {
+	app, _ := agingFixture(t, "99999")
+	for path, data := range map[string]string{
+		filepath.Join(app.ProcRoot, "200/status"):  "Name:\tsandbox\nPPid:\t100\nUid:\t99001\t99001\t99001\t99001\n",
+		filepath.Join(app.ProcRoot, "200/cmdline"): "org.chromium.content.app.SandboxedProcessService0\x00",
+		filepath.Join(app.ProcRoot, "100/status"):  "Name:\tgame\nPPid:\t1\nUid:\t10234\t10234\t10234\t10234\n",
+		filepath.Join(app.ProcRoot, "100/cmdline"): "com.example.game:renderer\x00",
+	} {
+		if err := mkdirAll(filepath.Dir(path)); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeFile(path, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pkg, uid, ok := app.agingGameProcessIdentity(200)
+	if !ok || pkg != "com.example.game" || uid != 10234 {
+		t.Fatalf("isolated game child resolved to pkg=%q uid=%d ok=%t", pkg, uid, ok)
+	}
+}
+
 func TestAgingStorageGateRequiresTwoRecoverySamples(t *testing.T) {
 	app, _ := agingFixture(t, "99999")
 	path := filepath.Join(app.SysRoot, "block/zram0/zms_stat")

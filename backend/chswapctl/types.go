@@ -49,6 +49,9 @@ type App struct {
 	// agingLastGameState suppresses repeated game-foreground messages while the
 	// vendor game probe remains active or temporarily unreadable.
 	agingLastGameState string
+	// agingLastObservedGamePID avoids rereading process identity and rewriting
+	// persistent game protection state on every five-second foreground poll.
+	agingLastObservedGamePID int64
 }
 
 type Envelope struct {
