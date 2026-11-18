@@ -134,14 +134,7 @@ func (a *App) memcgDirsByName(root string, name string) []string {
 // using the cheaper memory.app_uid value.
 func (a *App) memcgTaskUIDs(dir string) map[int64]bool {
 	uids := map[int64]bool{}
-	raw := readTrim(filepath.Join(dir, "cgroup.procs"))
-	if raw == "" {
-		raw = readTrim(filepath.Join(dir, "tasks"))
-	}
-	for _, pid := range strings.Fields(raw) {
-		if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
-			continue
-		}
+	for _, pid := range memcgProcs(dir) {
 		status := readTrim(a.proc(filepath.Join(pid, "status")))
 		for _, line := range strings.Split(status, "\n") {
 			fields := strings.Fields(line)

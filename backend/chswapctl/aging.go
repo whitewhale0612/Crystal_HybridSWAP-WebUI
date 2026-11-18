@@ -400,15 +400,8 @@ func (a *App) agingEffectiveUIDFromDirs(app AppMemInfo, dirs []string) (int64, b
 	if len(dirs) != 1 {
 		return 0, false
 	}
-	raw := readTrim(filepath.Join(dirs[0], "cgroup.procs"))
-	if raw == "" {
-		raw = readTrim(filepath.Join(dirs[0], "tasks"))
-	}
 	regular := map[int64]bool{}
-	for _, pid := range strings.Fields(raw) {
-		if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
-			continue
-		}
+	for _, pid := range memcgProcs(dirs[0]) {
 		status := readTrim(a.proc(filepath.Join(pid, "status")))
 		uid := int64(-1)
 		for _, line := range strings.Split(status, "\n") {
@@ -929,15 +922,8 @@ func (a *App) appProtectedProcessLevelInDir(app AppMemInfo, dir string) int {
 	if dir == "" {
 		return agingProtectedProcessNone
 	}
-	raw := readTrim(filepath.Join(dir, "cgroup.procs"))
-	if raw == "" {
-		raw = readTrim(filepath.Join(dir, "tasks"))
-	}
 	level := agingProtectedProcessNone
-	for _, pid := range strings.Fields(raw) {
-		if _, err := strconv.ParseInt(pid, 10, 64); err != nil {
-			continue
-		}
+	for _, pid := range memcgProcs(dir) {
 		adj := parseIntDefault(readTrim(a.proc(filepath.Join(pid, "oom_score_adj"))), 1000)
 		if !a.processParentIsSystemZygote(pid, app.UID) {
 			continue
