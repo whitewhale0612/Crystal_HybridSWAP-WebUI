@@ -19,10 +19,13 @@ const apiOutdatedMessage = "kernel is too old: Crystal Hybridswap is present but
 const apiOutdatedCode = "E_KERNEL_API_OUTDATED"
 
 type App struct {
-	SysRoot        string
-	ProcRoot       string
-	DevRoot        string
-	MemcgRoot      string
+	SysRoot   string
+	ProcRoot  string
+	DevRoot   string
+	MemcgRoot string
+	// PackagesList is Android's packages.list, used to name cgroup v2
+	// per-UID memcgs; empty disables naming.
+	PackagesList   string
 	ModDir         string
 	DataDir        string
 	StateDir       string

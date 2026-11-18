@@ -217,6 +217,7 @@ func (a *App) runDaemon(args []string) int {
 			}
 			if nextFullCycle.IsZero() || !now.Before(nextFullCycle) {
 				a.enforceState(profile, logln)
+				a.syncMemcgV2Names(logln)
 				a.agingCycle(profile, logln)
 				cycleInterval := agingFullCycle
 				if override > 0 {

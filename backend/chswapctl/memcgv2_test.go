@@ -101,3 +101,93 @@ func TestAgingNonAppUID(t *testing.T) {
 		}
 	}
 }
+
+func TestSyncMemcgV2Names(t *testing.T) {
+	app, root := v2Fixture(t)
+	single := v2AddMemcg(t, app, root, "apps/uid_10229", 10229,
+		map[string]string{"200": "com.example.single"})
+	shared := v2AddMemcg(t, app, root, "apps/uid_10300", 10300,
+		map[string]string{"300": "com.example.b:remote"})
+	clone := v2AddMemcg(t, app, root, "apps/uid_99910229", 99910229,
+		map[string]string{"400": "com.example.single"})
+	long := v2AddMemcg(t, app, root, "apps/uid_10400", 10400, nil)
+	isolated := v2AddMemcg(t, app, root, "apps/uid_99001", 99001, nil)
+	system := v2AddMemcg(t, app, root, "system/uid_1000", 1000, nil)
+	vendorNamed := v2AddMemcg(t, app, root, "apps/uid_10500", 10500, nil)
+	if err := writeFile(filepath.Join(vendorNamed, "memory.name"), "vendor.name\n"); err != nil {
+		t.Fatal(err)
+	}
+	unknownPkg := v2AddMemcg(t, app, root, "apps/uid_10600", 10600, nil)
+
+	list := filepath.Join(app.DataDir, "packages.list")
+	if err := mkdirAll(app.DataDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(list, strings.Join([]string{
+		"com.example.single 10229 0 /data/user/0/com.example.single default:targetSdkVersion=34 3003",
+		"com.example.a 10300 0 /data/user/0/com.example.a default 3003",
+		"com.example.b 10300 0 /data/user/0/com.example.b default 3003",
+		"com.example.this.package.name.is.long 10400 0 /data/x default none",
+		"com.example.vendor 10500 0 /data/x default none",
+		"android 1000 0 /data/system platform none",
+		"",
+	}, "\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	app.PackagesList = ""
+	if n := app.syncMemcgV2Names(nil); n != 0 {
+		t.Fatalf("naming must be disabled without packages.list, renamed=%d", n)
+	}
+	app.PackagesList = list
+	if n := app.syncMemcgV2Names(nil); n != 4 {
+		t.Fatalf("renamed=%d want 4", n)
+	}
+	for dir, want := range map[string]string{
+		single:      "com.example.single",
+		shared:      "com.example.b",
+		clone:       "com.example.single",
+		long:        "com.example.this.package.name.i",
+		isolated:    "uid_99001",
+		system:      "uid_1000",
+		vendorNamed: "vendor.name",
+		unknownPkg:  "uid_10600",
+	} {
+		if got := readTrim(filepath.Join(dir, "memory.name")); got != want {
+			t.Errorf("%s memory.name=%q want %q", dir, got, want)
+		}
+	}
+	if len("com.example.this.package.name.i") != memcgNameMax {
+		t.Fatalf("truncation fixture out of sync with memcgNameMax")
+	}
+	// Names already synced (including truncated ones) are left alone.
+	if n := app.syncMemcgV2Names(nil); n != 0 {
+		t.Fatalf("second sync renamed=%d want 0", n)
+	}
+}
+
+func TestSyncMemcgV2NamesNoopOnV1(t *testing.T) {
+	app := testApp(t)
+	memcg := filepath.Join(app.DevRoot, "memcg")
+	dir := filepath.Join(memcg, "apps", "uid_10229")
+	if err := mkdirAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(filepath.Join(memcg, "memory.zram_wm_ratio"), "75\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(filepath.Join(dir, "memory.name"), "uid_10229\n"); err != nil {
+		t.Fatal(err)
+	}
+	list := filepath.Join(app.DataDir, "packages.list")
+	if err := mkdirAll(app.DataDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(list, "com.example 10229 0 /data/x default none\n"); err != nil {
+		t.Fatal(err)
+	}
+	app.PackagesList = list
+	if n := app.syncMemcgV2Names(nil); n != 0 {
+		t.Fatalf("v1 hierarchy must not be renamed, renamed=%d", n)
+	}
+}

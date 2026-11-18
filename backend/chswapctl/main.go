@@ -48,6 +48,7 @@ func newApp() (*App, error) {
 		ProcRoot:       getenvDefault("CHSWAP_PROC_ROOT", "/proc"),
 		DevRoot:        getenvDefault("CHSWAP_DEV_ROOT", "/dev"),
 		MemcgRoot:      os.Getenv("CHSWAP_MEMCG_ROOT"),
+		PackagesList:   getenvDefault("CHSWAP_PACKAGES_LIST", defaultPackagesList),
 		ModDir:         modDir,
 		DataDir:        dataDir,
 		StateDir:       filepath.Join(dataDir, "state"),
