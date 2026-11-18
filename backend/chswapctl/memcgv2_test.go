@@ -88,3 +88,16 @@ func TestMemcgProcsReadsV2Children(t *testing.T) {
 		t.Fatalf("memcgTaskUIDs=%v", uids)
 	}
 }
+
+func TestAgingNonAppUID(t *testing.T) {
+	for uid, want := range map[int64]bool{
+		-1: true, 0: true, 1000: true, 9999: true,
+		10000: false, 10229: false, 89999: false,
+		90000: true, 99001: true,
+		1010229: false, 99910229: false, 99901000: true, 1099001: true,
+	} {
+		if got := agingNonAppUID(uid); got != want {
+			t.Errorf("agingNonAppUID(%d)=%v want %v", uid, got, want)
+		}
+	}
+}

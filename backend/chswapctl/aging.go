@@ -1098,7 +1098,7 @@ func (a *App) agingCycle(p *Profile, logln func(string, ...any)) {
 			stats.foreground++
 			continue
 		}
-		if agingProtectedName(app.Name) {
+		if agingNonAppUID(app.UID) || agingProtectedName(app.Name) {
 			stats.protectedName++
 			continue
 		}

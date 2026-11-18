@@ -44,3 +44,15 @@ func memcgProcs(dir string) []string {
 	})
 	return pids
 }
+
+// agingNonAppUID reports UIDs that must never be aged automatically: system
+// UIDs (app id below 10000) and isolated/WebView UIDs (app id 90000-99999),
+// for every Android user. On v1 these processes were not in per-app memcgs;
+// on v2 every UID has its own memcg, including system_server's uid_1000.
+func agingNonAppUID(uid int64) bool {
+	if uid < 0 {
+		return true
+	}
+	appID := uid % 100000
+	return appID < 10000 || appID >= 90000
+}
